@@ -4,7 +4,7 @@ from typing import List, Union
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "SSPV Mandala Community Website API"
-    API_V1_STR: str = "/api/v1"
+    API_V1_STR: str = "/api"
     
     # Environment
     ENVIRONMENT: str = "development"
@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "supersecretkeychangeinproduction"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    FIRST_SUPERUSER: str = "admin@example.com"
+    FIRST_SUPERUSER_PASSWORD: str = "adminpassword"
     
     # CORS
     BACKEND_CORS_ORIGINS: Union[List[str], str] = ["http://localhost:3000", "http://localhost:5173", "http://localhost:8000"]
