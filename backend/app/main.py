@@ -24,7 +24,7 @@ setup_logging()
 async def lifespan(app: FastAPI):
     # Establish local database session for seeding
     async with SessionLocal() as db:
-        if settings.FIRST_SUPERUSER:
+        if settings.ENVIRONMENT == "development" and settings.FIRST_SUPERUSER:
             user = await UserRepository.get_by_email(db, settings.FIRST_SUPERUSER)
             if not user:
                 hashed_pw = get_password_hash(settings.FIRST_SUPERUSER_PASSWORD)

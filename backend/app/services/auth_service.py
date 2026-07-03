@@ -56,6 +56,10 @@ class AuthService:
         # Look up session record
         rt_record = await UserRepository.get_refresh_token_by_hash(db, hashed_token)
         if not rt_record or rt_record.is_revoked:
+            if rt_record:
+                # Security Warning: A revoked refresh token was re-presented!
+                # Revoke all sessions for this compromised user account.
+                await UserRepository.revoke_all_user_refresh_tokens(db, rt_record.user_id)
             raise RefreshTokenInvalidError()
             
         # Check expiration

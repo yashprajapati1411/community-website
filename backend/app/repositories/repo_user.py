@@ -56,6 +56,16 @@ class UserRepository:
         await db.commit()
 
     @staticmethod
+    async def revoke_all_user_refresh_tokens(db: AsyncSession, user_id: int) -> None:
+        """Invalidate all active refresh token sessions for a user (e.g. security breach)."""
+        await db.execute(
+            update(RefreshToken)
+            .where(RefreshToken.user_id == user_id)
+            .values(is_revoked=True)
+        )
+        await db.commit()
+
+    @staticmethod
     async def update_password(db: AsyncSession, user: User, hashed_password: str) -> User:
         """Update a user's password hash in the database."""
         user.hashed_password = hashed_password
