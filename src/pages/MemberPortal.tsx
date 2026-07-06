@@ -1,9 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BookOpen, Users, FolderOpen, ArrowLeft, Eye, ShieldCheck, Download, Search, LogOut, Edit, Plus } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { useAuth } from '../context/AuthContext';
+import { memberService } from '../services/memberService';
+import type { MemberProfileResponse, FamilyMemberResponse } from '../services/memberService';
 import './MemberPortal.css';
 
 interface FamilyMember {
+  id?: number;
   name: string;
   relation: string;
   age: number;
@@ -26,45 +30,105 @@ interface FamilyHead {
 }
 
 interface MemberPortalProps {
-  isLoggedIn: boolean;
-  setIsLoggedIn: (login: boolean) => void;
+  isLoggedIn?: boolean;
+  setIsLoggedIn?: (login: boolean) => void;
 }
 
-export const MemberPortal: React.FC<MemberPortalProps> = ({ isLoggedIn, setIsLoggedIn }) => {
+export const MemberPortal: React.FC<MemberPortalProps> = () => {
+  const { isAuthenticated, isLoading: authLoading, login, logout } = useAuth();
   const [portalTab, setPortalTab] = useState<'home' | 'directory' | 'reports'>('home');
   
-  // User Profile state (Rajesh Parmar)
-  const [profile, setProfile] = useState<FamilyHead>({
-    id: 'SSPV-4829',
-    name: 'Rajesh Parmar',
-    city: 'Ahmedabad',
-    membersCount: 4,
-    spouse: 'Sneha Parmar',
-    village: 'Junagadh',
-    contact: '+91 98765 43210',
-    email: 'rajesh.parmar@sspv.org',
-    occupation: 'Business Owner',
-    address: '42, Heritage Enclave, Vastrapur, Ahmedabad - 380015',
-    members: [
-      { name: 'Rajesh Parmar', relation: 'Self (Head)', age: 48, occupation: 'Business Owner', education: 'B.Com' },
-      { name: 'Sneha Parmar', relation: 'Spouse', age: 44, occupation: 'Homemaker', education: 'B.A.' },
-      { name: 'Rahul Parmar', relation: 'Son', age: 22, occupation: 'Software Engineer', education: 'B.Tech IT' },
-      { name: 'Aarti Parmar', relation: 'Daughter', age: 18, occupation: 'Student', education: 'Undergrad Commerce' },
-    ]
-  });
+  // User Profile and Family state from backend APIs
+  const [profileData, setProfileData] = useState<MemberProfileResponse | null>(null);
+  const [familyMembers, setFamilyMembers] = useState<FamilyMemberResponse[]>([]);
+  const [portalLoading, setPortalLoading] = useState(false);
+  const [portalError, setPortalError] = useState<string | null>(null);
 
   const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [editForm, setEditForm] = useState({
-    name: profile.name,
-    spouse: profile.spouse,
-    village: profile.village,
-    city: profile.city,
-    contact: profile.contact,
-    email: profile.email,
-    occupation: profile.occupation,
-    address: profile.address
+    name: '',
+    spouse: '',
+    village: '',
+    city: 'Ahmedabad',
+    contact: '',
+    email: '',
+    occupation: 'Business / Professional',
+    address: ''
   });
   const [showUpdateSuccess, setShowUpdateSuccess] = useState(false);
+
+  const fetchPortalData = async () => {
+    if (!isAuthenticated) return;
+    setPortalLoading(true);
+    setPortalError(null);
+    try {
+      const [profRes, famRes] = await Promise.all([
+        memberService.getProfile(),
+        memberService.getFamilyMembers()
+      ]);
+      setProfileData(profRes);
+      setFamilyMembers(famRes);
+      
+      const spouseMember = famRes.find(m => m.relation.toLowerCase() === 'spouse');
+      setEditForm({
+        name: profRes.full_name,
+        spouse: spouseMember ? spouseMember.name : '',
+        village: profRes.village,
+        city: 'Ahmedabad',
+        contact: profRes.mobile,
+        email: profRes.email || '',
+        occupation: 'Business / Professional',
+        address: profRes.address
+      });
+    } catch (err: any) {
+      console.error("Failed to fetch portal data:", err);
+      const detail = err.response?.data?.detail || "Could not load profile data from server.";
+      setPortalError(typeof detail === 'string' ? detail : JSON.stringify(detail));
+    } finally {
+      setPortalLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isAuthenticated && !authLoading) {
+      fetchPortalData();
+    }
+  }, [isAuthenticated, authLoading]);
+
+  const spouseMember = familyMembers.find(m => m.relation.toLowerCase() === 'spouse');
+  const profile: FamilyHead = profileData ? {
+    id: `SSPV-${profileData.id}`,
+    name: profileData.full_name,
+    city: editForm.city || 'Ahmedabad',
+    membersCount: familyMembers.length,
+    spouse: spouseMember ? spouseMember.name : (editForm.spouse || 'N/A'),
+    village: profileData.village,
+    contact: profileData.mobile,
+    email: profileData.email || '',
+    occupation: editForm.occupation || 'Business / Professional',
+    address: profileData.address,
+    members: familyMembers.map(m => ({
+      id: m.id,
+      name: m.name,
+      relation: m.relation,
+      age: m.age,
+      occupation: m.occupation || '',
+      education: m.education || ''
+    }))
+  } : {
+    id: 'SSPV-0000',
+    name: 'Loading Member...',
+    city: 'Ahmedabad',
+    membersCount: 0,
+    spouse: 'Loading...',
+    village: 'Loading...',
+    contact: 'Loading...',
+    email: 'Loading...',
+    occupation: 'Loading...',
+    address: 'Loading...',
+    members: []
+  };
 
   // Login form state
   const [email, setEmail] = useState('');
@@ -72,6 +136,7 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({ isLoggedIn, setIsLog
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [loginError, setLoginError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Redesigned signup form states and tab state
   const [authTab, setAuthTab] = useState<'login' | 'signup'>('login');
@@ -82,6 +147,8 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({ isLoggedIn, setIsLog
   // Family Member Management State
   const [isAddingMember, setIsAddingMember] = useState(false);
   const [editingMemberIndex, setEditingMemberIndex] = useState<number | null>(null);
+  const [editingMemberId, setEditingMemberId] = useState<number | null>(null);
+  const [isSavingMember, setIsSavingMember] = useState(false);
   const [memberForm, setMemberForm] = useState<FamilyMember>({
     name: '',
     relation: 'Son',
@@ -261,15 +328,16 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({ isLoggedIn, setIsLog
     setDirectoryLevel('heads');
   };
 
-  const handleLoginSubmit = (e: React.FormEvent) => {
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) {
       setLoginError('Please enter both email and password.');
       return;
     }
-    if (email === 'demo@sspv.org' && password === 'demo123') {
-      setIsLoggedIn(true);
-      setLoginError('');
+    setIsSubmitting(true);
+    setLoginError('');
+    try {
+      await login({ email, password });
       setEditForm({
         name: profile.name,
         spouse: profile.spouse,
@@ -280,8 +348,11 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({ isLoggedIn, setIsLog
         occupation: profile.occupation,
         address: profile.address
       });
-    } else {
-      setLoginError('Invalid credentials. Use demo@sspv.org and demo123 to log in.');
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.detail || 'Invalid credentials. Please verify your email and password.';
+      setLoginError(typeof errorMsg === 'string' ? errorMsg : JSON.stringify(errorMsg));
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -314,7 +385,16 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({ isLoggedIn, setIsLog
   const selectedFamily = activeHeads.find(h => h.id === selectedHeadId);
 
   // NOT LOGGED IN VIEW: Render Redesigned Premium Split Layout Login Portal
-  if (!isLoggedIn) {
+  if (authLoading) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh', width: '100%' }}>
+        <div style={{ width: '40px', height: '40px', border: '4px solid rgba(0,0,0,0.1)', borderTopColor: '#d97706', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+        <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
     return (
       <div className="login-portal-section" id="login-form-view">
         {/* Full-bleed Background */}
@@ -448,15 +528,15 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({ isLoggedIn, setIsLog
                       </label>
                     </div>
 
-                    <button type="submit" className="login-submit-button" id="login-submit-btn">
-                      <span>Access Portal</span>
+                    <button type="submit" className="login-submit-button" id="login-submit-btn" disabled={isSubmitting}>
+                      <span>{isSubmitting ? 'Authenticating...' : 'Access Portal'}</span>
                       <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>arrow_forward</span>
                     </button>
 
                     <div className="login-demo-card">
                       <span>
                         <strong>Demo Credentials:</strong><br />
-                        Email: <code>demo@sspv.org</code> / Password: <code>demo123</code>
+                        Email: <code>admin@example.com</code> / Password: <code>adminpassword</code>
                       </span>
                     </div>
                   </form>
@@ -594,10 +674,22 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({ isLoggedIn, setIsLog
             {/* TAB: HOME & PROFILE */}
             {portalTab === 'home' && (
               <div className="dashboard-view animate-fade">
-                <header className="panel-header">
-                  <h1>Welcome back, {profile.name.split(' ')[0]}</h1>
-                  <p>Manage your family profile, edit credentials, register family members, and download logs.</p>
-                </header>
+                {portalLoading ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 0', gap: '16px' }}>
+                    <div style={{ width: '36px', height: '36px', border: '3px solid rgba(0,0,0,0.1)', borderTopColor: 'var(--color-primary)', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                    <span style={{ color: 'var(--color-text-muted)', fontSize: '14px' }}>Loading member profile and family tree...</span>
+                  </div>
+                ) : portalError ? (
+                  <div className="profile-success-msg" style={{ backgroundColor: '#fce8e6', color: '#b7221b', border: '1px solid rgba(183, 34, 27, 0.2)', padding: '16px', borderRadius: '8px', margin: '20px 0' }}>
+                    <strong>Error loading portal data:</strong> {portalError}
+                    <button className="btn btn-secondary" onClick={fetchPortalData} style={{ marginTop: '12px', display: 'block' }}>Retry</button>
+                  </div>
+                ) : (
+                  <>
+                    <header className="panel-header">
+                      <h1>Welcome back, {profile.name.split(' ')[0]}</h1>
+                      <p>Manage your family profile, edit credentials, register family members, and download logs.</p>
+                    </header>
 
                 {showUpdateSuccess && (
                   <div className="profile-success-msg">
@@ -637,15 +729,39 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({ isLoggedIn, setIsLog
                     </div>
 
                     {isEditingProfile ? (
-                      <form onSubmit={(e) => {
+                      <form onSubmit={async (e) => {
                         e.preventDefault();
-                        setProfile(prev => ({
-                          ...prev,
-                          ...editForm
-                        }));
-                        setIsEditingProfile(false);
-                        setShowUpdateSuccess(true);
-                        setTimeout(() => setShowUpdateSuccess(false), 5000);
+                        const cleanMobile = editForm.contact.replace(/\D/g, '');
+                        if (!/^\d{10}$/.test(cleanMobile)) {
+                          alert('Please enter a valid 10-digit mobile number without spaces or country code (e.g., 9876543210).');
+                          return;
+                        }
+                        setIsSavingProfile(true);
+                        try {
+                          await memberService.updateProfile({
+                            full_name: editForm.name,
+                            village: editForm.village,
+                            address: editForm.address,
+                            mobile: cleanMobile
+                          });
+                          const existingSpouse = familyMembers.find(m => m.relation.toLowerCase() === 'spouse');
+                          if (editForm.spouse.trim()) {
+                            if (existingSpouse && existingSpouse.name !== editForm.spouse.trim()) {
+                              await memberService.updateFamilyMember(existingSpouse.id, { name: editForm.spouse.trim() });
+                            } else if (!existingSpouse) {
+                              await memberService.createFamilyMember({ name: editForm.spouse.trim(), relation: 'Spouse', age: 35 });
+                            }
+                          }
+                          setIsEditingProfile(false);
+                          setShowUpdateSuccess(true);
+                          setTimeout(() => setShowUpdateSuccess(false), 5000);
+                          await fetchPortalData();
+                        } catch (err: any) {
+                          const errorMsg = err.response?.data?.detail || "Failed to update profile.";
+                          alert(typeof errorMsg === 'string' ? errorMsg : JSON.stringify(errorMsg));
+                        } finally {
+                          setIsSavingProfile(false);
+                        }
                       }} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                         <div className="form-group" style={{ marginBottom: 0 }}>
                           <label style={{ fontSize: '11px', fontWeight: 'bold' }}>Full Name *</label>
@@ -730,8 +846,8 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({ isLoggedIn, setIsLog
                             style={{ padding: '8px 12px', fontSize: '13px', borderRadius: '6px', border: '1px solid var(--color-outline-variant)', fontFamily: 'var(--font-body)', resize: 'vertical' }}
                           />
                         </div>
-                        <button type="submit" className="btn btn-primary" style={{ padding: '10px', marginTop: '6px', fontSize: '13px' }}>
-                          Save Profile Changes
+                        <button type="submit" className="btn btn-primary" style={{ padding: '10px', marginTop: '6px', fontSize: '13px' }} disabled={isSavingProfile}>
+                          {isSavingProfile ? 'Saving Changes...' : 'Save Profile Changes'}
                         </button>
                       </form>
                     ) : (
@@ -797,8 +913,8 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({ isLoggedIn, setIsLog
 
                     <button 
                       className="btn btn-outline"
-                      onClick={() => {
-                        setIsLoggedIn(false);
+                      onClick={async () => {
+                        await logout();
                         setPortalTab('home');
                         const homeTabLink = document.getElementById('nav-link-home');
                         if (homeTabLink) homeTabLink.click();
@@ -832,6 +948,7 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({ isLoggedIn, setIsLog
                           setMemberForm({ name: '', relation: 'Son', age: 18, occupation: '', education: '' });
                           setIsAddingMember(true);
                           setEditingMemberIndex(null);
+                          setEditingMemberId(null);
                         }}
                         style={{ padding: '6px 12px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '4px' }}
                       >
@@ -928,6 +1045,7 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({ isLoggedIn, setIsLog
                           onClick={() => {
                             setIsAddingMember(false);
                             setEditingMemberIndex(null);
+                            setEditingMemberId(null);
                           }}
                         >
                           Cancel
@@ -936,27 +1054,48 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({ isLoggedIn, setIsLog
                           type="button" 
                           className="btn btn-primary" 
                           style={{ padding: '6px 14px', fontSize: '12px' }}
-                          onClick={() => {
+                          disabled={isSavingMember}
+                          onClick={async () => {
                             if (!memberForm.name.trim()) {
                               alert('Please enter a name');
                               return;
                             }
-                            let updatedMembers = [...profile.members];
-                            if (editingMemberIndex !== null) {
-                              updatedMembers[editingMemberIndex] = memberForm;
-                            } else {
-                              updatedMembers.push(memberForm);
+                            if (memberForm.age < 0 || memberForm.age > 120) {
+                              alert('Please enter a valid age between 0 and 120');
+                              return;
                             }
-                            setProfile(prev => ({
-                              ...prev,
-                              members: updatedMembers,
-                              membersCount: updatedMembers.length
-                            }));
-                            setIsAddingMember(false);
-                            setEditingMemberIndex(null);
+                            setIsSavingMember(true);
+                            try {
+                              if (editingMemberId !== null) {
+                                await memberService.updateFamilyMember(editingMemberId, {
+                                  name: memberForm.name,
+                                  relation: memberForm.relation,
+                                  age: memberForm.age,
+                                  occupation: memberForm.occupation || undefined,
+                                  education: memberForm.education || undefined
+                                });
+                              } else {
+                                await memberService.createFamilyMember({
+                                  name: memberForm.name,
+                                  relation: memberForm.relation,
+                                  age: memberForm.age,
+                                  occupation: memberForm.occupation || undefined,
+                                  education: memberForm.education || undefined
+                                });
+                              }
+                              setIsAddingMember(false);
+                              setEditingMemberIndex(null);
+                              setEditingMemberId(null);
+                              await fetchPortalData();
+                            } catch (err: any) {
+                              const errorMsg = err.response?.data?.detail || "Failed to save family member.";
+                              alert(typeof errorMsg === 'string' ? errorMsg : JSON.stringify(errorMsg));
+                            } finally {
+                              setIsSavingMember(false);
+                            }
                           }}
                         >
-                          Save Member
+                          {isSavingMember ? 'Saving...' : 'Save Member'}
                         </button>
                       </div>
                     </motion.div>
@@ -974,49 +1113,62 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({ isLoggedIn, setIsLog
                       </tr>
                     </thead>
                     <tbody>
-                      {profile.members.map((member, mIdx) => (
-                        <tr key={mIdx}>
-                          <td><strong>{member.name}</strong></td>
-                          <td>{member.relation}</td>
-                          <td>{member.age} yrs</td>
-                          <td>{member.occupation || 'N/A'}</td>
-                          <td>{member.education || 'N/A'}</td>
-                          <td style={{ textAlign: 'right' }}>
-                            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                              <button 
-                                className="btn btn-secondary" 
-                                style={{ padding: '4px 10px', fontSize: '12px' }}
-                                onClick={() => {
-                                  setMemberForm(member);
-                                  setEditingMemberIndex(mIdx);
-                                  setIsAddingMember(false);
-                                }}
-                              >
-                                Edit
-                              </button>
-                              <button 
-                                className="btn btn-outline" 
-                                style={{ padding: '4px 10px', fontSize: '12px', color: 'var(--color-error)', borderColor: 'var(--color-outline-variant)' }}
-                                onClick={() => {
-                                  if (confirm(`Remove ${member.name} from family unit?`)) {
-                                    const updatedMembers = profile.members.filter((_, idx) => idx !== mIdx);
-                                    setProfile(prev => ({
-                                      ...prev,
-                                      members: updatedMembers,
-                                      membersCount: updatedMembers.length
-                                    }));
-                                  }
-                                }}
-                              >
-                                Delete
-                              </button>
-                            </div>
+                      {profile.members.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} style={{ textAlign: 'center', padding: '30px', color: 'var(--color-text-muted)' }}>
+                            No registered family members yet. Click 'Add Member' above to register family relatives.
                           </td>
                         </tr>
-                      ))}
+                      ) : (
+                        profile.members.map((member, mIdx) => (
+                          <tr key={member.id || mIdx}>
+                            <td><strong>{member.name}</strong></td>
+                            <td>{member.relation}</td>
+                            <td>{member.age} yrs</td>
+                            <td>{member.occupation || 'N/A'}</td>
+                            <td>{member.education || 'N/A'}</td>
+                            <td style={{ textAlign: 'right' }}>
+                              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                                <button 
+                                  className="btn btn-secondary" 
+                                  style={{ padding: '4px 10px', fontSize: '12px' }}
+                                  onClick={() => {
+                                    setMemberForm(member);
+                                    setEditingMemberIndex(mIdx);
+                                    setEditingMemberId(member.id !== undefined ? member.id : null);
+                                    setIsAddingMember(false);
+                                  }}
+                                >
+                                  Edit
+                                </button>
+                                <button 
+                                  className="btn btn-outline" 
+                                  style={{ padding: '4px 10px', fontSize: '12px', color: 'var(--color-error)', borderColor: 'var(--color-outline-variant)' }}
+                                  onClick={async () => {
+                                    if (confirm(`Remove ${member.name} from family unit?`)) {
+                                      if (member.id !== undefined) {
+                                        try {
+                                          await memberService.deleteFamilyMember(member.id);
+                                          await fetchPortalData();
+                                        } catch (err: any) {
+                                          alert("Failed to delete member: " + (err.response?.data?.detail || err.message));
+                                        }
+                                      }
+                                    }
+                                  }}
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))
+                      )}
                     </tbody>
                   </table>
                 </div>
+                  </>
+                )}
               </div>
             )}
 

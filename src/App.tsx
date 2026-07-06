@@ -9,10 +9,11 @@ import { Events } from './pages/Events';
 import { Gallery } from './pages/Gallery';
 import { History } from './pages/History';
 import { MemberPortal } from './pages/MemberPortal';
+import { useAuth } from './context/AuthContext';
 
 function App() {
   const [activeTab, setActiveTab] = useState<string>('home');
-  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
+  const { isAuthenticated } = useAuth();
 
   const renderContent = () => {
     switch (activeTab) {
@@ -31,7 +32,7 @@ function App() {
       case 'history':
         return <History />;
       case 'portal':
-        return <MemberPortal isLoggedIn={isLoggedIn} setIsLoggedIn={setIsLoggedIn} />;
+        return <MemberPortal isLoggedIn={isAuthenticated} setIsLoggedIn={() => {}} />;
       default:
         return <Home setActiveTab={setActiveTab} />;
     }
@@ -42,8 +43,8 @@ function App() {
       <Navbar 
         activeTab={activeTab} 
         setActiveTab={setActiveTab} 
-        isLoggedIn={isLoggedIn} 
-        setIsLoggedIn={setIsLoggedIn} 
+        isLoggedIn={isAuthenticated} 
+        setIsLoggedIn={() => {}} 
       />
       <main style={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
         {renderContent()}
@@ -54,3 +55,4 @@ function App() {
 }
 
 export default App;
+

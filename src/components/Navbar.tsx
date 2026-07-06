@@ -1,20 +1,20 @@
 import React, { useState } from 'react';
 import { Menu, X, LogOut } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 interface NavbarProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
-  isLoggedIn: boolean;
-  setIsLoggedIn: (login: boolean) => void;
+  isLoggedIn?: boolean;
+  setIsLoggedIn?: (login: boolean) => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
   activeTab,
   setActiveTab,
-  isLoggedIn,
-  setIsLoggedIn,
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { isAuthenticated, logout } = useAuth();
 
   const navItems = [
     { id: 'home', label: 'Home' },
@@ -33,9 +33,9 @@ export const Navbar: React.FC<NavbarProps> = ({
     window.scrollTo(0, 0);
   };
 
-  const handleLoginToggle = () => {
-    if (isLoggedIn) {
-      setIsLoggedIn(false);
+  const handleLoginToggle = async () => {
+    if (isAuthenticated) {
+      await logout();
       setActiveTab('home');
     } else {
       setActiveTab('portal');
@@ -71,7 +71,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   }}
                   id={`nav-link-${item.id}`}
                 >
-                  {item.id === 'portal' ? (isLoggedIn ? 'Member Portal' : 'Member Login') : item.label}
+                  {item.id === 'portal' ? (isAuthenticated ? 'Member Portal' : 'Member Login') : item.label}
                 </a>
               </li>
             ))}
@@ -79,7 +79,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         </nav>
 
         {/* Desktop Logout Button */}
-        {isLoggedIn && (
+        {isAuthenticated && (
           <div className="md-flex-desktop">
             <button 
               className="btn btn-outline"
@@ -118,11 +118,11 @@ export const Navbar: React.FC<NavbarProps> = ({
                   }}
                   id={`mobile-nav-link-${item.id}`}
                 >
-                  {item.id === 'portal' ? (isLoggedIn ? 'Member Portal' : 'Member Login') : item.label}
+                  {item.id === 'portal' ? (isAuthenticated ? 'Member Portal' : 'Member Login') : item.label}
                 </a>
               </li>
             ))}
-            {isLoggedIn && (
+            {isAuthenticated && (
               <li style={{ marginTop: '20px' }}>
                 <button 
                   className="btn btn-outline" 

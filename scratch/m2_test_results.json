@@ -1,0 +1,65 @@
+[
+  {
+    "endpoint": "GET /api/v1/members/me",
+    "expected": 200,
+    "actual": 200,
+    "pass": true,
+    "notes": "Got profile: Rajesh Parmar (9876543210)"
+  },
+  {
+    "endpoint": "PUT /api/v1/members/me",
+    "expected": 200,
+    "actual": 200,
+    "pass": true,
+    "notes": "Updated address to: 42, Heritage Enclave, Vastrapur, Ahmedabad"
+  },
+  {
+    "endpoint": "PUT /api/v1/members/me (Validation)",
+    "expected": 422,
+    "actual": 422,
+    "pass": true,
+    "notes": "Properly rejected 3-digit mobile number with 422 Unprocessable Entity"
+  },
+  {
+    "endpoint": "GET /api/v1/members/dashboard",
+    "expected": 200,
+    "actual": 200,
+    "pass": true,
+    "notes": "Stats returned: {'family_members_count': 0, 'pending_inquiries_count': 0, 'approved_inquiries_count': 0, 'active_notices_count': 0, 'upcoming_events_count': 0}"
+  },
+  {
+    "endpoint": "GET /api/v1/members/family",
+    "expected": 200,
+    "actual": 200,
+    "pass": true,
+    "notes": "Fetched 0 existing family members"
+  },
+  {
+    "endpoint": "POST /api/v1/members/family",
+    "expected": 201,
+    "actual": 201,
+    "pass": true,
+    "notes": "Created family member ID 4 (Sneha Parmar)"
+  },
+  {
+    "endpoint": "PUT /api/v1/members/family/{id}",
+    "expected": 200,
+    "actual": 200,
+    "pass": true,
+    "notes": "Updated member age to 45, occupation to Interior Designer"
+  },
+  {
+    "endpoint": "DELETE /api/v1/members/family/{id}",
+    "expected": 204,
+    "actual": 204,
+    "pass": true,
+    "notes": "Successfully deleted family relative (HTTP 204 No Content)"
+  },
+  {
+    "endpoint": "GET /api/v1/members/me (No Token)",
+    "expected": 401,
+    "actual": 401,
+    "pass": true,
+    "notes": "Properly rejected unauthenticated request with HTTP 401 Unauthorized"
+  }
+]
