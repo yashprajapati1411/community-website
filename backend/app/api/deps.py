@@ -10,7 +10,7 @@ from app.config.settings import settings
 
 # OAuth2 standard token extraction scheme
 reusable_oauth2 = OAuth2PasswordBearer(
-    tokenUrl=f"{settings.API_V1_STR}/auth/login"
+    tokenUrl=f"{settings.API_V1_STR}/auth/token"
 )
 
 async def get_current_user(

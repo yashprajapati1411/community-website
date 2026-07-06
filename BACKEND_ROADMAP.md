@@ -61,58 +61,61 @@ This checklist tracks progress through the Phase 2 backend implementation for th
 - [ ] Write `/api/v1/members/events` route (GET) to list registered community events.
 
 ---
+## 🛡️ Milestone 5: Admin APIs
+- [x] Build split admin routers inside `api/v1/endpoints/admin/`:
+  - [x] `admin_auth.py` -> Secure login paths.
+  - [x] `admin_members.py` -> Member verification triggers and listings.
+  - [x] `admin_gallery.py` -> Album and image governance.
+  - [x] `admin_events.py` -> Event creation & management.
+  - [x] `admin_notices.py` -> Pinned and homepage notice management.
+  - [x] `admin_committee.py` -> Committee profile adjustments.
+  - [x] `admin_bookings.py` -> Booking audits and approve/reject actions.
+  - [x] `admin_history.py` -> History logs CRUD.
+- [x] Write `admin_service.py` to calculate dashboard summary aggregates:
+  - [x] Total Members count.
+  - [x] Verified Members count.
+  - [x] Pending Bookings count.
+  - [x] Upcoming Events count.
+  - [x] Active Notices count.
+  - [x] Gallery Images count.
+  - [x] Committee Members count.
 
-## 🌐 Milestone 5: Public APIs
-- [ ] Write Pydantic read-only schemas for public-facing data.
-- [ ] Implement `public/committee.py` endpoint for active committee profiles.
-- [ ] Implement `public/gallery.py` endpoint for active gallery albums & images.
-- [ ] Implement `public/events.py` endpoint for upcoming public events.
-- [ ] Implement `public/notices.py` endpoint for homepage notice boards.
-- [ ] Implement `public/history.py` endpoint for native region history directories.
-- [ ] Implement `public/booking.py` availability query handlers (`/availability`).
+---
+## 🌐 Milestone 6: Public APIs
+- [x] Write Pydantic read-only schemas for public-facing data.
+- [x] Implement `public/committee.py` endpoint for active committee profiles.
+- [x] Implement `public/gallery.py` endpoint for active gallery albums & images.
+- [x] Implement `public/events.py` endpoint for upcoming public events.
+- [x] Implement `public/notices.py` endpoint for homepage notice boards.
+- [x] Implement `public/history.py` endpoint for native region history directories.
+- [x] Implement `public/booking.py` availability query handlers (`/availability`).
+
 
 ---
 
-## 🛡️ Milestone 6: Admin APIs
-- [ ] Build split admin routers inside `api/v1/endpoints/admin/`:
-  - [ ] `admin_auth.py` -> Secure login paths.
-  - [ ] `admin_members.py` -> Member verification triggers and listings.
-  - [ ] `admin_gallery.py` -> Album and image governance.
-  - [ ] `admin_events.py` -> Event creation & management.
-  - [ ] `admin_notices.py` -> Pinned and homepage notice management.
-  - [ ] `admin_committee.py` -> Committee profile adjustments.
-  - [ ] `admin_bookings.py` -> Booking audits and approve/reject actions.
-  - [ ] `admin_history.py` -> History logs CRUD.
-- [ ] Write `admin_service.py` to calculate dashboard summary aggregates:
-  - [ ] Total Members count.
-  - [ ] Verified Members count.
-  - [ ] Pending Bookings count.
-  - [ ] Upcoming Events count.
-  - [ ] Active Notices count.
-  - [ ] Gallery Images count.
-  - [ ] Committee Members count.
 
----
 
 ## 💾 Milestone 7: Image Upload
-- [ ] Define abstract class interface `BaseStorageProvider` in `app/utils/file_upload.py`.
-- [ ] Implement `LocalStorageProvider` to write files to disk under designated target paths:
-  - [ ] `uploads/gallery/`
-  - [ ] `uploads/committee/`
-  - [ ] `uploads/events/`
-  - [ ] `uploads/members/`
-- [ ] Write image upload endpoints with size and mimetype validations.
-- [ ] Configure FastAPI `StaticFiles` middleware to host uploads directory.
+- [x] Define abstract class interface `BaseStorageProvider` in `app/utils/file_upload.py`.
+- [x] Implement `LocalStorageProvider` to write files to disk under designated target paths:
+  - [x] `uploads/gallery/`
+  - [x] `uploads/committee/`
+  - [x] `uploads/events/`
+  - [x] `uploads/members/`
+- [x] Write image upload endpoints with size and mimetype validations.
+- [x] Configure FastAPI `StaticFiles` middleware to host uploads directory.
+
 
 ---
 
 ## 🧪 Milestone 8: Testing
-- [ ] Configure `pytest.ini` and write setup fixtures in `tests/conftest.py`.
-- [ ] Implement async SQLite/PostgreSQL in-memory engine wrapper for running tests.
-- [ ] Write test cases for authentication logic (JWT, cookies, RBAC restrictions).
-- [ ] Write test cases for Member Portal CRUD and validations.
-- [ ] Write test cases for Admin actions and dashboard outputs.
-- [ ] Verify code coverage and error handling middleware behaviors.
+- [x] Configure `pytest.ini` and write setup fixtures in `tests/conftest.py`.
+- [x] Implement async SQLite/PostgreSQL in-memory engine wrapper for running tests.
+- [x] Write test cases for authentication logic (JWT, cookies, RBAC restrictions).
+- [x] Write test cases for Member Portal CRUD and validations.
+- [x] Write test cases for Admin actions and dashboard outputs.
+- [x] Verify code coverage and error handling middleware behaviors.
+
 
 ---
 

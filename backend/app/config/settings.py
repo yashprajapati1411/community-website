@@ -4,7 +4,7 @@ from typing import List, Union
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "SSPV Mandala Community Website API"
-    API_V1_STR: str = "/api"
+    API_V1_STR: str = "/api/v1"
     
     # Environment
     ENVIRONMENT: str = "development"

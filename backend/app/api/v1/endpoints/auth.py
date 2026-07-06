@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, Response, Request
+from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
-from app.schemas.auth import Token, UserLogin, ChangePassword
+from app.schemas.auth import Token, UserLogin, ChangePassword, StatusMessageResponse, RBACTestResponse
 from app.services.auth_service import AuthService
 from app.core.security import create_access_token, decode_access_token
 from app.api.deps import get_current_user, get_member_user, get_admin_user
@@ -11,7 +12,13 @@ from app.exceptions.auth import RefreshTokenInvalidError
 
 router = APIRouter()
 
-@router.post("/login", response_model=Token)
+@router.post(
+    "/login",
+    response_model=Token,
+    status_code=200,
+    summary="User Login",
+    description="Authenticate user with email and password, issuing a JWT access token and an HttpOnly refresh cookie."
+)
 async def login(
     response: Response,
     login_data: UserLogin,
@@ -37,7 +44,7 @@ async def login(
         secure=settings.ENVIRONMENT == "production",
         samesite="lax",
         max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
-        path=f"{settings.API_V1_STR}/v1/auth"
+        path=f"{settings.API_V1_STR}/auth"
     )
     
     return {
@@ -46,7 +53,48 @@ async def login(
         "role": user.role
     }
 
-@router.post("/refresh", response_model=Token)
+@router.post(
+    "/token",
+    response_model=Token,
+    status_code=200,
+    summary="OAuth2 Access Token (Swagger UI Authorization)",
+    description="Dedicated OAuth2 password flow endpoint accepting username (email) and password via form-data (application/x-www-form-urlencoded) for Swagger UI Authorize button integration.",
+    include_in_schema=True
+)
+async def login_access_token(
+    response: Response,
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: AsyncSession = Depends(get_db)
+):
+    """OAuth2 compatible token login, required for Swagger UI authorization."""
+    user = await AuthService.authenticate_user(db, form_data.username, form_data.password)
+    access_token = create_access_token(subject=user.id, role=user.role)
+    plain_refresh_token = await AuthService.create_user_refresh_token(db, user.id)
+    
+    # Store refresh token in HttpOnly cookie restricted to auth paths
+    response.set_cookie(
+        key="refresh_token",
+        value=plain_refresh_token,
+        httponly=True,
+        secure=settings.ENVIRONMENT == "production",
+        samesite="lax",
+        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
+        path=f"{settings.API_V1_STR}/auth"
+    )
+    
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "role": user.role
+    }
+
+@router.post(
+    "/refresh",
+    response_model=Token,
+    status_code=200,
+    summary="Refresh Access Token",
+    description="Exchange a valid refresh token cookie for a new JWT access token and a rotated refresh token cookie."
+)
 async def refresh(
     request: Request,
     response: Response,
@@ -69,7 +117,7 @@ async def refresh(
         secure=settings.ENVIRONMENT == "production",
         samesite="lax",
         max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
-        path=f"{settings.API_V1_STR}/v1/auth"
+        path=f"{settings.API_V1_STR}/auth"
     )
     
     payload = decode_access_token(access_token)
@@ -81,7 +129,13 @@ async def refresh(
         "role": role
     }
 
-@router.post("/logout")
+@router.post(
+    "/logout",
+    response_model=StatusMessageResponse,
+    status_code=200,
+    summary="User Logout",
+    description="Log out a user by revoking their refresh token session in the database and clearing the browser cookie."
+)
 async def logout(
     request: Request,
     response: Response,
@@ -94,11 +148,17 @@ async def logout(
         
     response.delete_cookie(
         key="refresh_token",
-        path=f"{settings.API_V1_STR}/v1/auth"
+        path=f"{settings.API_V1_STR}/auth"
     )
     return {"status": "success", "message": "Logged out successfully"}
 
-@router.post("/change-password")
+@router.post(
+    "/change-password",
+    response_model=StatusMessageResponse,
+    status_code=200,
+    summary="Change User Password",
+    description="Update the password for the currently authenticated user."
+)
 async def change_password(
     data: ChangePassword,
     current_user: User = Depends(get_current_user),
@@ -111,7 +171,13 @@ async def change_password(
     return {"status": "success", "message": "Password updated successfully"}
 
 # --- RBAC Test Routes ---
-@router.get("/test-member")
+@router.get(
+    "/test-member",
+    response_model=RBACTestResponse,
+    status_code=200,
+    summary="Test Member Route Access",
+    description="Test endpoint accessible by verified members and administrators to verify RBAC permissions."
+)
 async def test_member_route(current_user: User = Depends(get_member_user)):
     """Test route accessible by members and administrators."""
     return {
@@ -121,7 +187,13 @@ async def test_member_route(current_user: User = Depends(get_member_user)):
         "role": current_user.role
     }
 
-@router.get("/test-admin")
+@router.get(
+    "/test-admin",
+    response_model=RBACTestResponse,
+    status_code=200,
+    summary="Test Admin Route Access",
+    description="Test endpoint accessible exclusively by administrators to verify admin RBAC permissions."
+)
 async def test_admin_route(current_user: User = Depends(get_admin_user)):
     """Test route accessible only by administrators."""
     return {
@@ -130,3 +202,4 @@ async def test_admin_route(current_user: User = Depends(get_admin_user)):
         "email": current_user.email,
         "role": current_user.role
     }
+
