@@ -12,8 +12,8 @@ router = APIRouter()
     description="Upload an image file under a designated category folder. Validates file size (max 5MB) and type (JPEG, PNG, GIF, WebP)."
 )
 async def upload_file(
-    category: str = Query(..., description="Target category: 'gallery', 'events', 'committee', or 'members'"),
-    file: UploadFile = File(..., description="Image file to upload")
+    category: str = Query(..., description="Target category: 'gallery', 'events', 'committee', 'members', or 'reports'"),
+    file: UploadFile = File(..., description="File to upload (image or PDF)")
 ):
     storage_provider = get_storage_provider()
     url = await storage_provider.save_file(file, category)

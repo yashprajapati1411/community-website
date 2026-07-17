@@ -1,5 +1,5 @@
-from pydantic import BaseModel, EmailStr, Field, ConfigDict
-from typing import Optional
+from pydantic import BaseModel, Field, ConfigDict
+from typing import Optional, List
 from app.schemas.content import NoticeResponse, EventResponse
 from app.schemas.booking import BookingInquiryResponse
 
@@ -58,59 +58,61 @@ class FamilyMemberResponse(FamilyMemberBase):
 
 
 class MemberProfileBase(BaseModel):
+    surname: str = Field("General", min_length=1, max_length=100)
     full_name: str = Field(..., min_length=2, max_length=100)
     village: str = Field(..., min_length=2, max_length=100)
+    city: str = Field("Ahmedabad", min_length=2, max_length=100)
     address: str = Field(..., min_length=5, max_length=255)
     mobile: str = Field(..., pattern=r"^\d{10}$")
+    occupation: Optional[str] = Field(None, max_length=150)
 
 class MemberProfileCreate(MemberProfileBase):
     user_id: int
-    model_config = ConfigDict(
-        json_schema_extra={
-            "example": {
-                "full_name": "Rajesh Kumar Patel",
-                "village": "SSPV Mandala",
-                "address": "101, Heritage Complex, Mandala Road",
-                "mobile": "9876543210",
-                "user_id": 1
-            }
-        }
-    )
 
 class MemberProfileUpdate(BaseModel):
+    surname: Optional[str] = Field(None, min_length=1, max_length=100)
     full_name: Optional[str] = Field(None, min_length=2, max_length=100)
     village: Optional[str] = Field(None, min_length=2, max_length=100)
+    city: Optional[str] = Field(None, min_length=2, max_length=100)
     address: Optional[str] = Field(None, min_length=5, max_length=255)
     mobile: Optional[str] = Field(None, pattern=r"^\d{10}$")
-    model_config = ConfigDict(
-        json_schema_extra={
-            "example": {
-                "address": "202, New Heritage Complex, Mandala Road",
-                "mobile": "9876543211"
-            }
-        }
-    )
+    occupation: Optional[str] = Field(None, max_length=150)
+    profile_completed: Optional[bool] = None
 
 class MemberProfileResponse(MemberProfileBase):
     id: int
     user_id: int
     is_verified: bool
-    email: Optional[EmailStr] = None
-    model_config = ConfigDict(
-        from_attributes=True,
-        json_schema_extra={
-            "example": {
-                "id": 1,
-                "user_id": 1,
-                "full_name": "Rajesh Kumar Patel",
-                "village": "SSPV Mandala",
-                "address": "101, Heritage Complex, Mandala Road",
-                "mobile": "9876543210",
-                "is_verified": True,
-                "email": "rajesh@sspvmandala.com"
-            }
-        }
-    )
+    profile_completed: bool = True
+    email: Optional[str] = None
+    model_config = ConfigDict(from_attributes=True)
+
+class DirectoryFamilyMemberResponse(BaseModel):
+    id: int
+    name: str
+    relation: str
+    age: int
+    occupation: Optional[str] = ""
+    education: Optional[str] = ""
+
+class DirectoryFamilyHeadResponse(BaseModel):
+    id: str
+    name: str
+    surname: str
+    city: str
+    village: str
+    contact: str
+    email: str
+    occupation: str
+    address: str
+    membersCount: int
+    spouse: str
+    members: List[DirectoryFamilyMemberResponse]
+
+class DirectorySurnameGroupResponse(BaseModel):
+    surname: str
+    count: int
+    heads: List[DirectoryFamilyHeadResponse]
 
 
 

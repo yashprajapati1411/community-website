@@ -1,10 +1,65 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
-from app.models.content import Notice, Event, CommitteeMember, GalleryAlbum, GalleryImage, SurnameHistory
-from datetime import date, datetime
+from app.models.content import Notice, Event, CommitteeMember, GalleryAlbum, GalleryImage, SurnameHistory, AnnualReport, EventRegistration, MemberAnnouncement
+from datetime import date, datetime, timezone
 
 class ContentRepository:
+    @staticmethod
+    async def get_active_member_announcements(db: AsyncSession) -> list[MemberAnnouncement]:
+        today = date.today()
+        stmt = (
+            select(MemberAnnouncement)
+            .where(MemberAnnouncement.is_published == True)
+            .where(MemberAnnouncement.deleted_at.is_(None))
+            .where((MemberAnnouncement.expiry_date.is_(None)) | (MemberAnnouncement.expiry_date >= today))
+            .order_by(MemberAnnouncement.display_order.asc(), MemberAnnouncement.created_at.desc())
+        )
+        result = await db.execute(stmt)
+        return list(result.scalars().all())
+
+    @staticmethod
+    async def get_all_member_announcements(db: AsyncSession) -> list[MemberAnnouncement]:
+        stmt = (
+            select(MemberAnnouncement)
+            .where(MemberAnnouncement.deleted_at.is_(None))
+            .order_by(MemberAnnouncement.display_order.asc(), MemberAnnouncement.created_at.desc())
+        )
+        result = await db.execute(stmt)
+        return list(result.scalars().all())
+
+    @staticmethod
+    async def get_member_announcement_by_id(db: AsyncSession, ann_id: int) -> MemberAnnouncement | None:
+        stmt = (
+            select(MemberAnnouncement)
+            .where(MemberAnnouncement.id == ann_id)
+            .where(MemberAnnouncement.deleted_at.is_(None))
+        )
+        result = await db.execute(stmt)
+        return result.scalars().first()
+
+    @staticmethod
+    async def create_member_announcement(db: AsyncSession, **kwargs) -> MemberAnnouncement:
+        ann = MemberAnnouncement(**kwargs)
+        db.add(ann)
+        await db.flush()
+        return ann
+
+    @staticmethod
+    async def update_member_announcement(db: AsyncSession, ann: MemberAnnouncement, update_data: dict) -> MemberAnnouncement:
+        for k, v in update_data.items():
+            if v is not None:
+                setattr(ann, k, v)
+        db.add(ann)
+        await db.flush()
+        return ann
+
+    @staticmethod
+    async def soft_delete_member_announcement(db: AsyncSession, ann: MemberAnnouncement) -> None:
+        ann.deleted_at = datetime.now(timezone.utc)
+        db.add(ann)
+        await db.flush()
+
     # --- NOTICES REDIRECTS ---
     @staticmethod
     async def get_active_notices(db: AsyncSession) -> list[Notice]:
@@ -442,3 +497,72 @@ class ContentRepository:
         """Hard delete a surname history record (flush only)."""
         await db.delete(history)
         await db.flush()
+
+    # --- ANNUAL REPORTS ---
+    @staticmethod
+    async def get_active_reports(db: AsyncSession) -> list[AnnualReport]:
+        stmt = (
+            select(AnnualReport)
+            .where(AnnualReport.is_published == True)
+            .where(AnnualReport.deleted_at == None)
+            .order_by(AnnualReport.display_order.asc(), AnnualReport.financial_year.desc(), AnnualReport.id.desc())
+        )
+        result = await db.execute(stmt)
+        return list(result.scalars().all())
+
+    @staticmethod
+    async def get_all_reports_admin(db: AsyncSession) -> list[AnnualReport]:
+        stmt = (
+            select(AnnualReport)
+            .where(AnnualReport.deleted_at == None)
+            .order_by(AnnualReport.display_order.asc(), AnnualReport.financial_year.desc(), AnnualReport.id.desc())
+        )
+        result = await db.execute(stmt)
+        return list(result.scalars().all())
+
+    @staticmethod
+    async def get_report_by_id(db: AsyncSession, report_id: int) -> AnnualReport | None:
+        stmt = select(AnnualReport).where(AnnualReport.id == report_id, AnnualReport.deleted_at == None)
+        result = await db.execute(stmt)
+        return result.scalars().first()
+
+    @staticmethod
+    async def create_report(db: AsyncSession, data: dict) -> AnnualReport:
+        report = AnnualReport(**data)
+        db.add(report)
+        await db.flush()
+        return report
+
+    @staticmethod
+    async def update_report(db: AsyncSession, report: AnnualReport, data: dict) -> AnnualReport:
+        for key, val in data.items():
+            if val is not None:
+                setattr(report, key, val)
+        db.add(report)
+        await db.flush()
+        return report
+
+    @staticmethod
+    async def delete_report(db: AsyncSession, report: AnnualReport) -> None:
+        report.deleted_at = datetime.now(timezone.utc)
+        db.add(report)
+        await db.flush()
+
+    # --- EVENT REGISTRATIONS ---
+    @staticmethod
+    async def create_event_registration(db: AsyncSession, data: dict) -> EventRegistration:
+        reg = EventRegistration(**data)
+        db.add(reg)
+        await db.flush()
+        return reg
+
+    @staticmethod
+    async def get_event_registrations_by_event_id(db: AsyncSession, event_id: int) -> list[EventRegistration]:
+        stmt = (
+            select(EventRegistration)
+            .where(EventRegistration.event_id == event_id)
+            .order_by(EventRegistration.created_at.desc())
+        )
+        result = await db.execute(stmt)
+        return list(result.scalars().all())
+

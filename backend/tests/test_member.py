@@ -74,3 +74,73 @@ async def test_get_dashboard(client: AsyncClient, normal_user_token_headers):
     assert "statistics" in data
     assert "family_members_count" in data["statistics"]
 
+@pytest.mark.asyncio
+async def test_update_profile_extended_fields(client: AsyncClient, normal_user_token_headers):
+    update_payload = {
+        "surname": "Parmar",
+        "city": "Ahmedabad",
+        "occupation": "Software Engineer",
+        "profile_completed": True
+    }
+    response = await client.put(
+        "/api/v1/members/me",
+        json=update_payload,
+        headers=normal_user_token_headers
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["surname"] == "Parmar"
+    assert data["city"] == "Ahmedabad"
+    assert data["occupation"] == "Software Engineer"
+    assert data["profile_completed"] is True
+
+@pytest.mark.asyncio
+async def test_get_directory(client: AsyncClient, normal_user_token_headers):
+    response = await client.get("/api/v1/members/directory", headers=normal_user_token_headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, list)
+
+@pytest.mark.asyncio
+async def test_member_announcements_crud(client: AsyncClient, admin_token_headers, normal_user_token_headers):
+    # Admin creates a member announcement
+    create_payload = {
+        "title": "Samuh Lagan Registration Open",
+        "content": "Register by December 1st.",
+        "category": "Events",
+        "is_published": True,
+        "display_order": 1
+    }
+    res_create = await client.post(
+        "/api/v1/admin/member-announcements",
+        json=create_payload,
+        headers=admin_token_headers
+    )
+    assert res_create.status_code == 201
+    ann_id = res_create.json()["id"]
+    assert res_create.json()["title"] == "Samuh Lagan Registration Open"
+
+    # Member fetches announcements
+    res_member = await client.get("/api/v1/members/announcements", headers=normal_user_token_headers)
+    assert res_member.status_code == 200
+    anns = res_member.json()
+    assert len(anns) >= 1
+    assert any(a["id"] == ann_id for a in anns)
+
+    # Admin updates announcement
+    res_update = await client.put(
+        f"/api/v1/admin/member-announcements/{ann_id}",
+        json={"title": "Samuh Lagan Registration Updated"},
+        headers=admin_token_headers
+    )
+    assert res_update.status_code == 200
+    assert res_update.json()["title"] == "Samuh Lagan Registration Updated"
+
+    # Admin soft deletes announcement
+    res_del = await client.delete(
+        f"/api/v1/admin/member-announcements/{ann_id}",
+        headers=admin_token_headers
+    )
+    assert res_del.status_code == 204
+
+

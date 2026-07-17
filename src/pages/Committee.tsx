@@ -1,42 +1,40 @@
-import React from 'react';
-import { Shield, Users } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Shield, Users, Loader2 } from 'lucide-react';
+import { publicService } from '../services/publicService';
+import type { CommitteeMemberResponse } from '../services/publicService';
 
 export const Committee: React.FC = () => {
-  const executives = [
-    {
-      name: 'Shri Rameshbhai Prajapati',
-      role: 'President',
-      experience: '30+ Years of Public Service',
-      description: 'Steward of community heritage, guiding the trust with dedication to cultural preservation and integration of youth services.',
-      initials: 'RP',
-      color: 'var(--color-primary)',
-    },
-    {
-      name: 'Smt. Bhavnaben Patel',
-      role: 'Vice President',
-      experience: '20+ Years of Welfare Focus',
-      description: 'Focusing on women welfare modules, educational trusts, and organizing student advancement seminars.',
-      initials: 'BP',
-      color: 'var(--color-secondary)',
-    },
-    {
-      name: 'Shri Dineshbhai Mistry',
-      role: 'General Secretary',
-      experience: '15+ Years in Operations',
-      description: 'Ensuring seamless operations of booking, communications, database administration, and outreach programs.',
-      initials: 'DM',
-      color: 'var(--color-tertiary)',
-    },
-  ];
+  const [members, setMembers] = useState<CommitteeMemberResponse[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const generalMembers = [
-    { name: 'Amitbhai Prajapati', role: 'Cultural Coordinator', dept: 'Festivals & Samuh Lagan' },
-    { name: 'Geetaben Solanki', role: 'Welfare Head', dept: 'Medical & Scholarship Funds' },
-    { name: 'Rajeshbhai Chavda', role: 'Treasurer', dept: 'Audits & Asset Management' },
-    { name: 'Snehaben Parmar', role: 'Events Manager', dept: 'Hall Booking Coordinator' },
-    { name: 'Kantibhai Rathod', role: 'Advisory Board Member', dept: 'Legal & Heritage Counsel' },
-    { name: 'Nitinbhai Vaghela', role: 'IT & Communications Head', dept: 'Digital Directory & Portal' },
-  ];
+  useEffect(() => {
+    const fetchCommittee = async () => {
+      try {
+        setIsLoading(true);
+        const data = await publicService.getCommittee();
+        setMembers(data);
+      } catch (err) {
+        setError('Failed to load committee members. Please try again later.');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchCommittee();
+  }, []);
+
+  const getInitials = (name: string) => {
+    return name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+  };
+
+  const colors = ['var(--color-primary)', 'var(--color-secondary)', 'var(--color-tertiary)'];
+
+  // Separate executives from general members
+  const execKeywords = ['president', 'vice', 'secretary', 'treasurer', 'chair'];
+  const executives = members.filter(m => 
+    execKeywords.some(k => m.designation.toLowerCase().includes(k)) || m.display_order <= 3
+  );
+  const generalMembers = members.filter(m => !executives.includes(m));
 
   return (
     <div className="container section" id="committee-page-container">
@@ -46,45 +44,73 @@ export const Committee: React.FC = () => {
         <p className="section-subtitle">Meet the visionary leaders who guide SSPV Mandala with integrity, transparency, and a commitment to progress.</p>
       </div>
 
-      {/* Executive Council */}
-      <div className="executive-section" style={{ marginBottom: '60px' }}>
-        <h2 className="sub-title">Executive Officers</h2>
-        <div className="grid grid-3">
-          {executives.map((exec, idx) => (
-            <div key={idx} className="card card-primary exec-card" id={`exec-${idx}`}>
-              <div className="avatar-large" style={{ backgroundColor: exec.color }}>
-                <span>{exec.initials}</span>
-              </div>
-              <h3 className="exec-name">{exec.name}</h3>
-              <p className="exec-role">{exec.role}</p>
-              <p className="exec-exp">
-                <Shield size={14} style={{ marginRight: '4px', verticalAlign: 'middle' }} />
-                {exec.experience}
-              </p>
-              <p className="exec-desc">{exec.description}</p>
-            </div>
-          ))}
+      {isLoading ? (
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '60px 0' }}>
+          <Loader2 className="animate-spin" size={36} color="var(--color-primary)" />
         </div>
-      </div>
+      ) : error ? (
+        <div className="alert alert-error" style={{ textAlign: 'center', padding: '20px', marginBottom: '40px' }}>
+          {error}
+        </div>
+      ) : members.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--color-text-light)' }}>
+          <p>No committee members currently published.</p>
+        </div>
+      ) : (
+        <>
+          {/* Executive Council */}
+          {executives.length > 0 && (
+            <div className="executive-section" style={{ marginBottom: '60px' }}>
+              <h2 className="sub-title">Executive Officers</h2>
+              <div className="grid grid-3">
+                {executives.map((exec, idx) => (
+                  <div key={exec.id} className="card card-primary exec-card" id={`exec-${idx}`}>
+                    {exec.image_url ? (
+                      <img src={exec.image_url} alt={exec.name} style={{ width: '80px', height: '80px', borderRadius: '50%', objectFit: 'cover', margin: '0 auto 16px' }} />
+                    ) : (
+                      <div className="avatar-large" style={{ backgroundColor: colors[idx % colors.length] }}>
+                        <span>{getInitials(exec.name)}</span>
+                      </div>
+                    )}
+                    <h3 className="exec-name">{exec.name}</h3>
+                    <p className="exec-role">{exec.designation}</p>
+                    <p className="exec-exp">
+                      <Shield size={14} style={{ marginRight: '4px', verticalAlign: 'middle' }} />
+                      {exec.term_start ? `Active since ${exec.term_start.split('-')[0]}` : 'Active Member'}
+                    </p>
+                    <p className="exec-desc">{exec.email ? `Contact: ${exec.email}` : 'Dedicated to community governance and cultural preservation.'}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
-      {/* General Committee Members */}
-      <div className="general-section">
-        <h2 className="sub-title">Committee Departments</h2>
-        <div className="grid grid-3">
-          {generalMembers.map((member, idx) => (
-            <div key={idx} className="member-card-mini" id={`member-${idx}`}>
-              <div className="member-icon-mini">
-                <Users size={18} />
-              </div>
-              <div className="member-info-mini">
-                <h4 className="member-name-mini">{member.name}</h4>
-                <p className="member-role-mini">{member.role}</p>
-                <span className="member-dept-badge">{member.dept}</span>
+          {/* General Committee Members */}
+          {generalMembers.length > 0 && (
+            <div className="general-section">
+              <h2 className="sub-title">Committee Departments</h2>
+              <div className="grid grid-3">
+                {generalMembers.map((member, idx) => (
+                  <div key={member.id} className="member-card-mini" id={`member-${idx}`}>
+                    {member.image_url ? (
+                      <img src={member.image_url} alt={member.name} style={{ width: '48px', height: '48px', borderRadius: '50%', objectFit: 'cover' }} />
+                    ) : (
+                      <div className="member-icon-mini">
+                        <Users size={18} />
+                      </div>
+                    )}
+                    <div className="member-info-mini">
+                      <h4 className="member-name-mini">{member.name}</h4>
+                      <p className="member-role-mini">{member.designation}</p>
+                      <span className="member-dept-badge">{member.phone || 'Committee Member'}</span>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
-          ))}
-        </div>
-      </div>
+          )}
+        </>
+      )}
 
       <style>{`
         .badge {

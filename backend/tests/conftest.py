@@ -67,7 +67,7 @@ async def admin_user(db_session: AsyncSession):
     from app.repositories.repo_member import MemberRepository
     from app.core.security import get_password_hash
     
-    hashed_pw = get_password_hash("adminpassword")
+    hashed_pw = get_password_hash("987654")
     user = await UserRepository.create(
         db_session,
         email="admin@test.com",

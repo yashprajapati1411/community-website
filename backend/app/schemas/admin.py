@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field, ConfigDict
 from decimal import Decimal
 from typing import Optional
+from datetime import datetime
 from app.schemas.booking import BookingInquiryResponse
 
 class AdminDashboardSummary(BaseModel):
@@ -11,6 +12,9 @@ class AdminDashboardSummary(BaseModel):
     active_notices_count: int
     gallery_images_count: int
     committee_members_count: int
+    pending_registrations_count: int = 0
+    approved_members_count: int = 0
+    rejected_registrations_count: int = 0
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
@@ -20,7 +24,10 @@ class AdminDashboardSummary(BaseModel):
                 "upcoming_events_count": 4,
                 "active_notices_count": 6,
                 "gallery_images_count": 120,
-                "committee_members_count": 15
+                "committee_members_count": 15,
+                "pending_registrations_count": 5,
+                "approved_members_count": 140,
+                "rejected_registrations_count": 2
             }
         }
     )
@@ -78,4 +85,18 @@ class UploadResponse(BaseModel):
         }
     )
 
+class RegistrationRequestResponse(BaseModel):
+    id: int
+    user_id: int
+    full_name: str
+    mobile: str
+    status: str
+    reviewed_at: Optional[datetime] = None
+    reviewed_by: Optional[int] = None
+    remarks: Optional[str] = None
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
 
+class RegistrationReviewRequest(BaseModel):
+    status: str = Field(..., pattern="^(approved|rejected)$")
+    remarks: Optional[str] = Field(None, max_length=500)

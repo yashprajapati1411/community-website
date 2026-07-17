@@ -4,15 +4,16 @@ from abc import ABC, abstractmethod
 from fastapi import UploadFile, HTTPException, status
 
 # Allowed mime types
-ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"]
-MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
+# Allowed mime types
+ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp", "application/pdf"]
+MAX_FILE_SIZE = 20 * 1024 * 1024  # 20MB for reports and media
 
 class BaseStorageProvider(ABC):
     @abstractmethod
     async def save_file(self, file: UploadFile, category: str) -> str:
         """
         Save the file to the storage and return its public URL path.
-        category must be one of: 'gallery', 'events', 'committee', 'members'
+        category must be one of: 'gallery', 'events', 'committee', 'members', 'reports'
         """
         pass
 
@@ -30,7 +31,7 @@ class LocalStorageProvider(BaseStorageProvider):
 
     async def save_file(self, file: UploadFile, category: str) -> str:
         # Validate category
-        valid_categories = ["gallery", "events", "committee", "members"]
+        valid_categories = ["gallery", "events", "committee", "members", "reports"]
         if category not in valid_categories:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -63,7 +64,8 @@ class LocalStorageProvider(BaseStorageProvider):
                 "image/jpeg": ".jpg",
                 "image/png": ".png",
                 "image/gif": ".gif",
-                "image/webp": ".webp"
+                "image/webp": ".webp",
+                "application/pdf": ".pdf"
             }
             ext = mime_to_ext.get(file.content_type, ".jpg")
 

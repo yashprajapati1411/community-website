@@ -2,8 +2,13 @@ from fastapi import APIRouter, Depends, Response, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
-from app.schemas.auth import Token, UserLogin, ChangePassword, StatusMessageResponse, RBACTestResponse
+from app.schemas.auth import (
+    Token, UserLogin, ChangePassword, StatusMessageResponse, RBACTestResponse,
+    RegistrationRequestCreate, ForgotPasswordRequest, VerifyOTPRequest, ResetPasswordRequest
+)
+from app.schemas.admin import RegistrationRequestResponse
 from app.services.auth_service import AuthService
+from app.services.registration_service import RegistrationService
 from app.core.security import create_access_token, decode_access_token
 from app.api.deps import get_current_user, get_member_user, get_admin_user
 from app.models.user import User
@@ -32,7 +37,7 @@ async def login(
     - Implement a Redis-backed rate limiter (e.g., tracking attempts by user email and request IP address).
     - Limit attempts to a maximum of 5 failures in 15 minutes. Excess attempts should trigger a 429 Too Many Requests response with a cooldown timer.
     """
-    user = await AuthService.authenticate_user(db, login_data.email, login_data.password)
+    user = await AuthService.authenticate_user(db, login_data.mobile, login_data.password)
     access_token = create_access_token(subject=user.id, role=user.role)
     plain_refresh_token = await AuthService.create_user_refresh_token(db, user.id)
     
@@ -202,4 +207,66 @@ async def test_admin_route(current_user: User = Depends(get_admin_user)):
         "email": current_user.email,
         "role": current_user.role
     }
+
+@router.post(
+    "/register",
+    response_model=RegistrationRequestResponse,
+    status_code=201,
+    summary="Submit Member Registration Request",
+    description="Submit a registration request for community membership verification."
+)
+async def register(
+    data: RegistrationRequestCreate,
+    db: AsyncSession = Depends(get_db)
+):
+    """Register a new member request."""
+    return await RegistrationService.create_request(db, data)
+
+
+@router.post(
+    "/forgot-password/request-otp",
+    status_code=200,
+    summary="Request Password Reset OTP",
+    description="Generate and send a 6-digit OTP to registered mobile number via SMS provider."
+)
+async def request_password_reset_otp(
+    request_data: ForgotPasswordRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """Request password reset OTP."""
+    return await AuthService.request_password_reset_otp(db, request_data.mobile)
+
+
+@router.post(
+    "/forgot-password/verify-otp",
+    status_code=200,
+    summary="Verify Password Reset OTP",
+    description="Verify 6-digit OTP and receive a temporary single-use reset token."
+)
+async def verify_password_reset_otp(
+    verify_data: VerifyOTPRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """Verify OTP for password reset."""
+    return await AuthService.verify_password_reset_otp(db, verify_data.mobile, verify_data.otp)
+
+
+@router.post(
+    "/forgot-password/reset-password",
+    status_code=200,
+    summary="Reset Password",
+    description="Reset user password using valid single-use reset token."
+)
+async def reset_password(
+    reset_data: ResetPasswordRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """Complete password reset flow."""
+    return await AuthService.reset_password_with_token(
+        db,
+        reset_data.mobile,
+        reset_data.reset_token,
+        reset_data.new_password,
+        reset_data.confirm_password
+    )
 

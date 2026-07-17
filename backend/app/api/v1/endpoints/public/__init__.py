@@ -5,7 +5,8 @@ from app.api.v1.endpoints.public import (
     events,
     notices,
     history,
-    booking
+    booking,
+    reports
 )
 
 public_router = APIRouter()
@@ -16,4 +17,6 @@ public_router.include_router(events.router, prefix="/events", tags=["Public APIs
 public_router.include_router(notices.router, prefix="/notices", tags=["Public APIs"])
 public_router.include_router(history.router, prefix="/history", tags=["Public APIs"])
 public_router.include_router(booking.router, prefix="/bookings", tags=["Public APIs"])
+public_router.include_router(reports.router, prefix="/reports", tags=["Public APIs"])
+
 

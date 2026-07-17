@@ -1,7 +1,7 @@
-from sqlalchemy import String, Text, ForeignKey, Date
+from sqlalchemy import String, Text, ForeignKey, Date, JSON, Boolean, Integer, DateTime
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from datetime import date
-from typing import List, TYPE_CHECKING
+from datetime import date, datetime
+from typing import List, TYPE_CHECKING, Any
 from app.models.base import Base, TimestampMixin, SoftDeleteMixin
 
 if TYPE_CHECKING:
@@ -39,6 +39,7 @@ class Event(Base, TimestampMixin, SoftDeleteMixin):
     is_featured: Mapped[bool] = mapped_column(default=False, nullable=False)
     registration_deadline: Mapped[date | None] = mapped_column(Date, nullable=True)
     max_capacity: Mapped[int | None] = mapped_column(nullable=True)
+    form_fields: Mapped[Any | None] = mapped_column(JSON, nullable=True)
 
     # Relationships
     creator: Mapped["User | None"] = relationship()
@@ -103,3 +104,68 @@ class SurnameHistory(Base, TimestampMixin):
     native_region: Mapped[str] = mapped_column(String(255), nullable=False)
     history: Mapped[str] = mapped_column(Text, nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+class AnnualReport(Base, TimestampMixin, SoftDeleteMixin):
+    __tablename__ = "annual_reports"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    financial_year: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    file_url: Mapped[str] = mapped_column(String(512), nullable=False)
+    display_order: Mapped[int] = mapped_column(default=0, nullable=False)
+    is_published: Mapped[bool] = mapped_column(default=True, nullable=False)
+
+class EventRegistration(Base, TimestampMixin):
+    __tablename__ = "event_registrations"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    event_id: Mapped[int] = mapped_column(
+        ForeignKey("events.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+    user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    mobile: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    member_count: Mapped[int] = mapped_column(default=1, nullable=False)
+    remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
+    custom_responses: Mapped[Any | None] = mapped_column(JSON, nullable=True)
+    status: Mapped[str] = mapped_column(String(50), default="confirmed", nullable=False)
+
+class RegistrationRequest(Base, TimestampMixin):
+    __tablename__ = "registration_requests"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True
+    )
+    full_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    mobile: Mapped[str] = mapped_column(String(20), nullable=False)
+    status: Mapped[str] = mapped_column(String(50), default="pending", nullable=False)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reviewed_by: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True
+    )
+    remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+class MemberAnnouncement(Base, TimestampMixin, SoftDeleteMixin):
+    __tablename__ = "member_announcements"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    category: Mapped[str] = mapped_column(String(100), default="General", nullable=False)
+    is_published: Mapped[bool] = mapped_column(default=True, nullable=False, index=True)
+    display_order: Mapped[int] = mapped_column(default=0, nullable=False, index=True)
+    expiry_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+

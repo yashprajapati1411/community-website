@@ -2,9 +2,25 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from app.models.member import MemberProfile, FamilyMember
+from app.models.user import User
 from datetime import datetime
 
 class MemberRepository:
+    @staticmethod
+    async def get_directory_profiles(db: AsyncSession) -> list[MemberProfile]:
+        """Fetch all verified and profile_completed member profiles with active users."""
+        stmt = (
+            select(MemberProfile)
+            .join(User, MemberProfile.user_id == User.id)
+            .where(MemberProfile.is_verified == True)
+            .where(MemberProfile.profile_completed == True)
+            .where(MemberProfile.deleted_at.is_(None))
+            .where(User.is_active == True)
+            .options(selectinload(MemberProfile.user), selectinload(MemberProfile.family_members))
+        )
+        result = await db.execute(stmt)
+        return list(result.scalars().all())
+
     @staticmethod
     async def get_profile_by_user_id(db: AsyncSession, user_id: int) -> MemberProfile | None:
         """Fetch a member profile by the owner's User ID, eagerly loading their User record."""
@@ -34,16 +50,23 @@ class MemberRepository:
         full_name: str,
         village: str,
         address: str,
-        mobile: str
+        mobile: str,
+        surname: str = "General",
+        city: str = "Ahmedabad",
+        occupation: str | None = None
     ) -> MemberProfile:
         """Create a new member profile row in the session (flush only)."""
         profile = MemberProfile(
             user_id=user_id,
+            surname=surname,
             full_name=full_name,
             village=village,
+            city=city,
             address=address,
             mobile=mobile,
-            is_verified=False
+            occupation=occupation,
+            is_verified=False,
+            profile_completed=True
         )
         db.add(profile)
         await db.flush()

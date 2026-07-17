@@ -49,7 +49,13 @@ async def lifespan(app: FastAPI):
                 await db.commit()
                 logger.info(f"Default admin profile seeded for user ID: {admin_user.id}")
             else:
-                logger.info(f"Administrator account already exists: {settings.FIRST_SUPERUSER}")
+                from app.core.security import verify_password
+                if not verify_password(settings.FIRST_SUPERUSER_PASSWORD, user.hashed_password):
+                    user.hashed_password = get_password_hash(settings.FIRST_SUPERUSER_PASSWORD)
+                    await db.commit()
+                    logger.info(f"Updated default administrator password for: {settings.FIRST_SUPERUSER}")
+                else:
+                    logger.info(f"Administrator account already exists: {settings.FIRST_SUPERUSER}")
     yield
 
 # OpenAPI tag descriptions for Swagger / Redoc documentation

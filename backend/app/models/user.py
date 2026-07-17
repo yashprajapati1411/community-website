@@ -42,3 +42,21 @@ class RefreshToken(Base, TimestampMixin):
 
     # Relationships
     user: Mapped["User"] = relationship(back_populates="refresh_tokens")
+
+
+class PasswordResetOTP(Base, TimestampMixin):
+    __tablename__ = "password_reset_otps"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+    mobile: Mapped[str] = mapped_column(String(20), index=True, nullable=False)
+    hashed_otp: Mapped[str] = mapped_column(String(128), nullable=False)
+    reset_token: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    attempts: Mapped[int] = mapped_column(default=0, nullable=False)
+    is_used: Mapped[bool] = mapped_column(default=False, nullable=False)
+

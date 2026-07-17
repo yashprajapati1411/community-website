@@ -23,3 +23,8 @@ class GalleryImageNotFoundError(CustomAppError):
 class SurnameHistoryNotFoundError(CustomAppError):
     def __init__(self):
         super().__init__("Surname history record not found", status_code=404)
+
+class AnnualReportNotFoundError(CustomAppError):
+    def __init__(self):
+        super().__init__("Annual report not found", status_code=404)
+

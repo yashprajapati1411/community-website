@@ -16,11 +16,15 @@ class MemberProfile(Base, TimestampMixin, SoftDeleteMixin):
         nullable=False,
         index=True
     )
+    surname: Mapped[str] = mapped_column(String(100), default="General", nullable=False, index=True)
     full_name: Mapped[str] = mapped_column(String(255), nullable=False)
     village: Mapped[str] = mapped_column(String(255), nullable=False)
+    city: Mapped[str] = mapped_column(String(100), default="Ahmedabad", nullable=False)
     address: Mapped[str] = mapped_column(Text, nullable=False)
     mobile: Mapped[str] = mapped_column(String(20), unique=True, index=True, nullable=False)
+    occupation: Mapped[str | None] = mapped_column(String(150), nullable=True)
     is_verified: Mapped[bool] = mapped_column(default=False, nullable=False)
+    profile_completed: Mapped[bool] = mapped_column(default=True, nullable=False)
 
     # Relationships
     user: Mapped["User"] = relationship(back_populates="profile")

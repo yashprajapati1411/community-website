@@ -277,7 +277,8 @@ h1, h2, h3, h4, h5, h6 {
   justify-content: space-between;
   align-items: center;
   height: 80px;
-  max-width: 1280px;
+  max-width: 1440px;
+  width: 100%;
   margin: 0 auto;
   padding: 0 var(--container-padding);
 }
@@ -296,6 +297,7 @@ h1, h2, h3, h4, h5, h6 {
   text-decoration: none;
   display: flex;
   flex-direction: column;
+  flex-shrink: 0;
 }
 
 .navbar-brand-sub {
@@ -306,28 +308,40 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--color-text-muted);
 }
 
+.desktop-nav {
+  display: flex;
+  align-items: center;
+}
+
 .navbar-links {
   display: flex;
-  gap: 20px;
+  gap: clamp(4px, 0.9vw, 14px);
   list-style: none;
   align-items: center;
+  flex-wrap: nowrap;
+  margin: 0;
+  padding: 0;
 }
 
 @media (max-width: 1024px) {
   .navbar-links {
-    display: none; /* In production apps, build hamburger, but we can make it fully responsive with pure CSS toggle or simple React toggle */
+    display: none;
   }
 }
 
 .navbar-link {
   font-family: var(--font-body);
   font-weight: 500;
-  font-size: 14px;
+  font-size: 13.5px;
   color: var(--color-text-muted);
   text-decoration: none;
-  padding: 8px 12px;
+  padding: 6px 10px;
   border-radius: var(--border-radius-md);
   transition: all 0.2s ease;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .navbar-link:hover, .navbar-link.active {

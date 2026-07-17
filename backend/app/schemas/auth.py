@@ -1,4 +1,5 @@
-from pydantic import BaseModel, EmailStr, ConfigDict
+from pydantic import BaseModel, EmailStr, ConfigDict, Field
+from typing import Optional
 
 # Schema returned on successful authentication
 class Token(BaseModel):
@@ -17,12 +18,12 @@ class Token(BaseModel):
 
 # Schema for incoming login requests
 class UserLogin(BaseModel):
-    email: EmailStr
+    mobile: str
     password: str
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
-                "email": "member@sspvmandala.com",
+                "mobile": "9876543210",
                 "password": "StrongPassword123!"
             }
         }
@@ -44,7 +45,7 @@ class ChangePassword(BaseModel):
 # Schema representing basic User details
 class UserResponse(BaseModel):
     id: int
-    email: EmailStr
+    email: str
     role: str
     is_active: bool
     model_config = ConfigDict(
@@ -90,4 +91,39 @@ class RBACTestResponse(BaseModel):
     )
 
 
+class RegistrationRequestCreate(BaseModel):
+    full_name: str = Field(..., min_length=2, max_length=255)
+    mobile: str = Field(..., min_length=10, max_length=20)
+    password: Optional[str] = Field("Welcome@123", min_length=6, max_length=128)
+    confirm_password: Optional[str] = Field(None, max_length=128)
+    email: Optional[str] = Field(None, max_length=255)
+    village: Optional[str] = Field("Ahmedabad", max_length=255)
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "full_name": "Ramesh Bhai Patel",
+                "mobile": "9876543210",
+                "password": "StrongPassword123!",
+                "confirm_password": "StrongPassword123!",
+                "email": "ramesh@example.com",
+                "village": "Ahmedabad"
+            }
+        }
+    )
+
+
+class ForgotPasswordRequest(BaseModel):
+    mobile: str = Field(..., min_length=10, max_length=20)
+
+
+class VerifyOTPRequest(BaseModel):
+    mobile: str = Field(..., min_length=10, max_length=20)
+    otp: str = Field(..., min_length=6, max_length=6)
+
+
+class ResetPasswordRequest(BaseModel):
+    mobile: str = Field(..., min_length=10, max_length=20)
+    reset_token: str = Field(..., min_length=10, max_length=255)
+    new_password: str = Field(..., min_length=6, max_length=128)
+    confirm_password: str = Field(..., min_length=6, max_length=128)
 

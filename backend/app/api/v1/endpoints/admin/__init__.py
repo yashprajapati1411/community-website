@@ -10,7 +10,10 @@ from app.api.v1.endpoints.admin import (
     admin_gallery,
     admin_history,
     admin_dashboard,
-    admin_upload
+    admin_upload,
+    admin_reports,
+    admin_registrations,
+    admin_announcements
 )
 
 admin_router = APIRouter(dependencies=[Depends(get_admin_user)])
@@ -23,7 +26,13 @@ admin_router.include_router(admin_bookings.router, prefix="/bookings", tags=["Ad
 admin_router.include_router(admin_committee.router, prefix="/committee", tags=["Admin Committee"])
 admin_router.include_router(admin_events.router, prefix="/events", tags=["Admin Events"])
 admin_router.include_router(admin_notices.router, prefix="/notices", tags=["Admin Notices"])
+admin_router.include_router(admin_announcements.router, prefix="/member-announcements", tags=["Admin Member Announcements"])
 admin_router.include_router(admin_gallery.router, prefix="/gallery", tags=["Admin Gallery"])
 admin_router.include_router(admin_history.router, prefix="/history", tags=["Admin Regional History"])
 admin_router.include_router(admin_upload.router, prefix="/upload", tags=["Admin Uploads"])
+admin_router.include_router(admin_reports.router, prefix="/reports", tags=["Admin Annual Reports"])
+admin_router.include_router(admin_registrations.router, prefix="/registrations", tags=["Admin Registration Requests"])
+
+
+
 

@@ -1,6 +1,11 @@
+import hashlib
+import hmac
+import secrets
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timedelta
 from app.repositories.repo_user import UserRepository
+from app.repositories.repo_otp import OTPRepository
+from app.services.sms_service import SMSService
 from app.core.security import (
     verify_password,
     get_password_hash,
@@ -21,8 +26,15 @@ from app.models.user import User
 class AuthService:
     @staticmethod
     async def authenticate_user(db: AsyncSession, email: str, password: str) -> User:
-        """Authenticate a user using email and password, throwing errors if invalid/inactive."""
+        """Authenticate a user using email or mobile and password, throwing errors if invalid/inactive."""
         user = await UserRepository.get_by_email(db, email)
+        if not user:
+            from app.models.member import MemberProfile
+            from sqlalchemy import select
+            res = await db.execute(select(MemberProfile).where(MemberProfile.mobile == email))
+            profile = res.scalars().first()
+            if profile:
+                user = await UserRepository.get_by_id(db, profile.user_id)
         if not user:
             raise InvalidCredentialsError()
         
@@ -105,3 +117,96 @@ class AuthService:
         hashed_password = get_password_hash(new_password)
         # Save to database
         await UserRepository.update_password(db, user, hashed_password)
+
+    @staticmethod
+    async def request_password_reset_otp(db: AsyncSession, mobile: str) -> dict:
+        """Generate and send a 6-digit OTP for password reset."""
+        from app.models.member import MemberProfile
+        from sqlalchemy import select
+
+        res = await db.execute(select(MemberProfile).where(MemberProfile.mobile == mobile))
+        profile = res.scalars().first()
+        user = None
+        if profile:
+            user = await UserRepository.get_by_id(db, profile.user_id)
+        if not user:
+            user = await UserRepository.get_by_email(db, mobile)
+
+        # To prevent user enumeration, always return standard success response
+        if not user or not user.is_active:
+            return {"status": "success", "message": "If this mobile number is registered and active, an OTP has been sent."}
+
+        latest_otp = await OTPRepository.get_latest_otp(db, mobile)
+        now = datetime.utcnow()
+        if latest_otp and (now - latest_otp.created_at).total_seconds() < 60:
+            raise CustomAppError("Please wait 60 seconds before requesting another OTP.", status_code=429)
+
+        otp_str = f"{secrets.randbelow(900000) + 100000}"
+        hashed_otp = hashlib.sha256(otp_str.encode("utf-8")).hexdigest()
+        expires_at = now + timedelta(minutes=5)
+
+        await OTPRepository.create_otp(db, user.id, mobile, hashed_otp, expires_at)
+        await db.commit()
+
+        await SMSService.send_otp(mobile, otp_str)
+        return {"status": "success", "message": "If this mobile number is registered and active, an OTP has been sent."}
+
+    @staticmethod
+    async def verify_password_reset_otp(db: AsyncSession, mobile: str, otp: str) -> dict:
+        """Verify the 6-digit OTP and issue a temporary single-use reset token."""
+        record = await OTPRepository.get_latest_otp(db, mobile)
+        if not record:
+            raise CustomAppError("Invalid or expired OTP.", status_code=400)
+
+        now = datetime.utcnow()
+        if record.attempts >= 5:
+            raise CustomAppError("Maximum verification attempts exceeded. Please request a new OTP.", status_code=400)
+
+        if now > record.expires_at:
+            raise CustomAppError("OTP has expired. Please request a new OTP.", status_code=400)
+
+        incoming_hash = hashlib.sha256(otp.encode("utf-8")).hexdigest()
+        if not hmac.compare_digest(incoming_hash, record.hashed_otp):
+            await OTPRepository.increment_attempts(db, record)
+            await db.commit()
+            raise CustomAppError("Invalid OTP.", status_code=400)
+
+        reset_token = secrets.token_urlsafe(32)
+        hashed_token = hashlib.sha256(reset_token.encode("utf-8")).hexdigest()
+        await OTPRepository.set_reset_token(db, record, hashed_token)
+        await db.commit()
+
+        return {"status": "success", "reset_token": reset_token, "message": "OTP verified successfully."}
+
+    @staticmethod
+    async def reset_password_with_token(
+        db: AsyncSession,
+        mobile: str,
+        reset_token: str,
+        new_password: str,
+        confirm_password: str
+    ) -> dict:
+        """Reset user password using valid single-use reset token."""
+        if new_password != confirm_password:
+            raise CustomAppError("New Password and Confirm Password do not match.", status_code=400)
+
+        hashed_token = hashlib.sha256(reset_token.encode("utf-8")).hexdigest()
+        record = await OTPRepository.get_latest_by_reset_token(db, mobile, hashed_token)
+        if not record:
+            raise CustomAppError("Invalid or expired reset session. Please request a new OTP.", status_code=400)
+
+        now = datetime.utcnow()
+        if now > record.expires_at + timedelta(minutes=15):
+            raise CustomAppError("Reset session expired. Please request a new OTP.", status_code=400)
+
+        user = await UserRepository.get_by_id(db, record.user_id)
+        if not user or not user.is_active:
+            raise CustomAppError("User account is inactive or not found.", status_code=400)
+
+        hashed_password = get_password_hash(new_password)
+        await UserRepository.update_password(db, user, hashed_password)
+        await OTPRepository.mark_used(db, record)
+        await db.commit()
+
+        return {"status": "success", "message": "Password reset successfully. You can now login with your new password."}
+

@@ -4,19 +4,27 @@ import { API_CONFIG } from '../config/api';
 export interface MemberProfileResponse {
   id: number;
   user_id: number;
+  surname?: string;
   full_name: string;
   village: string;
+  city?: string;
   address: string;
   mobile: string;
+  occupation?: string;
   is_verified: boolean;
+  profile_completed?: boolean;
   email?: string;
 }
 
 export interface MemberProfileUpdate {
+  surname?: string;
   full_name?: string;
   village?: string;
+  city?: string;
   address?: string;
   mobile?: string;
+  occupation?: string;
+  profile_completed?: boolean;
 }
 
 export interface MemberDashboardStats {
@@ -61,6 +69,48 @@ export interface FamilyMemberUpdate {
   occupation?: string;
 }
 
+export interface DirectoryFamilyMember {
+  id: number;
+  name: string;
+  relation: string;
+  age: number;
+  occupation?: string;
+  education?: string;
+}
+
+export interface DirectoryFamilyHead {
+  id: string;
+  name: string;
+  surname: string;
+  city: string;
+  village: string;
+  contact: string;
+  email: string;
+  occupation: string;
+  address: string;
+  membersCount: number;
+  spouse: string;
+  members: DirectoryFamilyMember[];
+}
+
+export interface DirectorySurnameGroup {
+  surname: string;
+  count: number;
+  heads: DirectoryFamilyHead[];
+}
+
+export interface MemberAnnouncement {
+  id: number;
+  title: string;
+  content: string;
+  category: string;
+  is_published: boolean;
+  display_order: number;
+  expiry_date?: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export const memberService = {
   getProfile: async (): Promise<MemberProfileResponse> => {
     const response = await apiClient.get<MemberProfileResponse>(API_CONFIG.ENDPOINTS.MEMBERS.ME);
@@ -95,4 +145,15 @@ export const memberService = {
   deleteFamilyMember: async (id: number): Promise<void> => {
     await apiClient.delete(`${API_CONFIG.ENDPOINTS.MEMBERS.FAMILY}/${id}`);
   },
+
+  getDirectory: async (): Promise<DirectorySurnameGroup[]> => {
+    const response = await apiClient.get<DirectorySurnameGroup[]>(API_CONFIG.ENDPOINTS.MEMBERS.DIRECTORY);
+    return response.data;
+  },
+
+  getAnnouncements: async (): Promise<MemberAnnouncement[]> => {
+    const response = await apiClient.get<MemberAnnouncement[]>(API_CONFIG.ENDPOINTS.MEMBERS.ANNOUNCEMENTS);
+    return response.data;
+  },
 };
+

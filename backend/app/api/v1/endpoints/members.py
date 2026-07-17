@@ -10,9 +10,10 @@ from app.schemas.member import (
     FamilyMemberResponse,
     FamilyMemberCreate,
     FamilyMemberUpdate,
-    MemberDashboardSummary
+    MemberDashboardSummary,
+    DirectorySurnameGroupResponse
 )
-from app.schemas.content import NoticeResponse, EventResponse
+from app.schemas.content import NoticeResponse, EventResponse, MemberAnnouncementResponse
 from app.services.member_service import MemberService
 from app.services.content_service import ContentService
 
@@ -162,4 +163,33 @@ async def get_events(
     """Fetch active upcoming events board (paginated)."""
     events = await ContentService.get_events(db)
     return events[skip : skip + limit]
+
+@router.get(
+    "/directory",
+    response_model=List[DirectorySurnameGroupResponse],
+    status_code=200,
+    summary="Get Digital Family Directory",
+    description="Retrieve live hierarchical directory of approved community members grouped by Surname."
+)
+async def get_directory(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_member_user)
+):
+    """Fetch structured family directory grouped by surname -> head -> members."""
+    return await MemberService.get_directory(db)
+
+@router.get(
+    "/announcements",
+    response_model=List[MemberAnnouncementResponse],
+    status_code=200,
+    summary="Get Member Announcements",
+    description="Retrieve live published portal announcements for logged-in members."
+)
+async def get_member_announcements(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_member_user)
+):
+    """Fetch published member portal announcements."""
+    return await ContentService.get_member_announcements(db)
+
 

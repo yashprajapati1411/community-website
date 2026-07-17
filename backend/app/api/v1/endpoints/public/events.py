@@ -1,9 +1,9 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Path, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 
 from app.core.database import get_db
-from app.schemas.content import EventResponse
+from app.schemas.content import EventResponse, EventRegistrationCreate, EventRegistrationResponse
 from app.services.content_service import ContentService
 
 router = APIRouter()
@@ -22,4 +22,19 @@ async def list_active_events(
 ):
     events = await ContentService.get_events(db)
     return events[skip : skip + limit]
+
+@router.post(
+    "/{id}/register",
+    response_model=EventRegistrationResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Register for an Event",
+    description="Submit a registration form for a published upcoming event."
+)
+async def register_event(
+    reg_data: EventRegistrationCreate,
+    id: int = Path(..., description="Unique ID of the event"),
+    db: AsyncSession = Depends(get_db)
+):
+    """Register for an event."""
+    return await ContentService.register_for_event(db, id, reg_data, current_user=None)
 

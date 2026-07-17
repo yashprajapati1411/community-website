@@ -1,20 +1,35 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Sparkles, Calendar, Heart } from 'lucide-react';
+import { publicService } from '../services/publicService';
+import type { NoticeResponse } from '../services/publicService';
 
 export const Marquee: React.FC = () => {
-  const events = [
-    { text: 'Annual Samuh Lagan (Mass Marriage) - Dec 24, 2026', icon: <Sparkles size={16} /> },
-    { text: 'Navratri Cultural Celebration at Ahmedabad Hall', icon: <Heart size={16} /> },
-    { text: 'SSPV Career Counseling & Scholarship Seminar - Aug 15', icon: <Calendar size={16} /> },
-    { text: 'SSPV Youth Leadership Summit - Nov 05, 2026', icon: <Sparkles size={16} /> },
-    { text: 'General Committee Monthly Assembly - This Sunday 10 AM', icon: <Calendar size={16} /> },
-  ];
+  const [notices, setNotices] = useState<NoticeResponse[]>([]);
+
+  useEffect(() => {
+    const fetchNotices = async () => {
+      try {
+        const data = await publicService.getNotices();
+        setNotices(data);
+      } catch (err) {
+        console.error('Failed to load marquee notices:', err);
+      }
+    };
+    fetchNotices();
+  }, []);
+
+  const items = notices.length > 0 
+    ? notices.map(n => ({
+        text: `${n.title} ${n.description ? `- ${n.description}` : ''}`,
+        icon: n.priority === 'high' ? <Sparkles size={16} /> : n.priority === 'medium' ? <Calendar size={16} /> : <Heart size={16} />
+      }))
+    : [{ text: 'Welcome to Shree Sorathiya Prajapati Vikas Mandala - Community Portal & Events', icon: <Sparkles size={16} /> }];
 
   return (
     <div className="marquee-wrapper" id="marquee-ticker">
       <div className="marquee-content">
         {/* Render twice for seamless infinite loop scroll */}
-        {[...events, ...events].map((item, idx) => (
+        {[...items, ...items].map((item, idx) => (
           <div key={idx} className="marquee-item">
             <span className="marquee-icon">{item.icon}</span>
             <span className="marquee-text">{item.text}</span>

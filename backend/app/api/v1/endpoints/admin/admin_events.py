@@ -4,7 +4,7 @@ from typing import List
 from app.core.database import get_db
 from app.api.deps import get_current_user
 from app.models.user import User
-from app.schemas.content import EventResponse, EventCreate, EventUpdate
+from app.schemas.content import EventResponse, EventCreate, EventUpdate, EventRegistrationsSummaryResponse
 from app.services.content_service import ContentService
 
 router = APIRouter()
@@ -22,6 +22,21 @@ async def list_all_events(
 ):
     """Retrieve all events, including drafts and cancelled ones (Admin only)."""
     return await ContentService.get_all_events_admin(db, current_user)
+
+@router.get(
+    "/{id}/registrations",
+    response_model=EventRegistrationsSummaryResponse,
+    status_code=200,
+    summary="View Event Registrations",
+    description="Retrieve all submitted registration forms, total count, and expected attendees for an event (Admin only)."
+)
+async def get_event_registrations(
+    id: int = Path(..., description="Unique ID of the event"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """View all registrations for an event (Admin only)."""
+    return await ContentService.get_event_registrations_admin(db, current_user, id)
 
 @router.post(
     "",
@@ -68,4 +83,5 @@ async def delete_community_event(
     """Soft-delete a community event (Admin only)."""
     await ContentService.delete_event(db, current_user, id)
     return None
+
 

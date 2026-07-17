@@ -1,110 +1,46 @@
-import React, { useState } from 'react';
-import { Search, MapPin, Users, Award, X } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Search, MapPin, Users, Award, X, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-
-interface SurnameItem {
-  surname: string;
-  trade: string;
-  region: string;
-  count: number;
-  origin: string;
-}
+import { publicService } from '../services/publicService';
+import type { SurnameHistoryResponse } from '../services/publicService';
 
 export const History: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedSurname, setSelectedSurname] = useState<SurnameItem | null>(null);
+  const [surnames, setSurnames] = useState<SurnameHistoryResponse[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const surnamesData: SurnameItem[] = [
-    {
-      surname: 'Kukadiya',
-      trade: 'Pottery & Vessels',
-      region: 'Sorath District',
-      count: 142,
-      origin: 'Derived from ancient pottery guilds in Saurashtra. Renowned for creating robust grain containers and clay-baked structural piping.',
-    },
-    {
-      surname: 'Chandegra',
-      trade: 'Temple Architecture',
-      region: 'Coastal Gujarat',
-      count: 98,
-      origin: 'Historically credited with kiln-fired brick masonry. Contributed to early mediaeval temple bases and civic stepwell foundations.',
-    },
-    {
-      surname: 'Vavadiya',
-      trade: 'Stepwell Irrigation',
-      region: 'Saurashtra Plains',
-      count: 120,
-      origin: 'Derived from the stepwells (Vav) they managed. Integrators of clay-pipe water channels for agrarian irrigation grids.',
-    },
-    {
-      surname: 'Gohil',
-      trade: 'Terracotta Sculpting',
-      region: 'Bhavnagar Region',
-      count: 110,
-      origin: 'Associated with artistic clay figures, royal murals, and festive miniature pottery requested by regional courts.',
-    },
-    {
-      surname: 'Parmar',
-      trade: 'Trade & Commerce',
-      region: 'Rajkot Guilds',
-      count: 215,
-      origin: 'Pioneered the commerce of earthenware. Established regional guilds which protected artisan rights across western India.',
-    },
-    {
-      surname: 'Chauhan',
-      trade: 'Scribes & Education',
-      region: 'Ahmedabad Chapter',
-      count: 185,
-      origin: 'Associated with recording trust records, community genealogies, and pioneering early primary educational trusts.',
-    },
-    {
-      surname: 'Mistry',
-      trade: 'Architectural Design',
-      region: 'Kutch Borderlands',
-      count: 130,
-      origin: 'Craftsmen of architectural wood-turning and structural clay roofs. Key advisors for early dome masonry.',
-    },
-    {
-      surname: 'Prajapati',
-      trade: 'Clay Artisanry',
-      region: 'Sorath Base',
-      count: 320,
-      origin: 'The original lineage name representing clay creation. Considered keepers of the ancient wheel-turning heritage.',
-    },
-    {
-      surname: 'Solanki',
-      trade: 'Kiln Operations',
-      region: 'Saurashtra Coast',
-      count: 115,
-      origin: 'Masters of temperature control and wood-fired kilns. Managed large-scale glazing operations for utility pots.',
-    },
-    {
-      surname: 'Chavda',
-      trade: 'Earthenware Supply',
-      region: 'Mehsana Chapter',
-      count: 94,
-      origin: 'Spearheaded logistics of distribution across trade paths. Handled caravans supplying ceramic tiles to urban markets.',
-    },
-    {
-      surname: 'Vaghela',
-      trade: 'Agricultural Clay',
-      region: 'Gir Borders',
-      count: 88,
-      origin: 'Specialists in agricultural clay linings for storage wells and water cisterns to prevent seepage.',
-    },
-    {
-      surname: 'Rathod',
-      trade: 'Utility Tooling',
-      region: 'Surendranagar',
-      count: 104,
-      origin: 'Designed specialty clay tools used by other artisans, including mold frames, turning pins, and grinding pads.',
-    },
-  ];
+  const [selectedSurname, setSelectedSurname] = useState<SurnameHistoryResponse | null>(null);
 
-  const filteredSurnames = surnamesData.filter(s =>
+  useEffect(() => {
+    const fetchHistory = async () => {
+      try {
+        setIsLoading(true);
+        const data = await publicService.getSurnameHistory();
+        setSurnames(data);
+      } catch (err) {
+        setError('Failed to load surname histories. Please try again later.');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchHistory();
+  }, []);
+
+  const handleViewDetails = async (item: SurnameHistoryResponse) => {
+    try {
+      setSelectedSurname(item);
+      const detailed = await publicService.getSurnameHistoryById(item.id);
+      setSelectedSurname(detailed);
+    } catch (err) {
+      console.error('Failed to load detailed surname history:', err);
+    }
+  };
+
+  const filteredSurnames = surnames.filter(s =>
     s.surname.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    s.trade.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    s.region.toLowerCase().includes(searchTerm.toLowerCase())
+    (s.description && s.description.toLowerCase().includes(searchTerm.toLowerCase())) ||
+    s.native_region.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
@@ -115,7 +51,7 @@ export const History: React.FC = () => {
           <span className="badge">GENEALOGICAL ROOTS</span>
           <h1 className="section-title">Surnames History</h1>
           <p className="section-subtitle">
-            Discover the ancestral guilds, historical trades, and native regions of our twelve primary community branches.
+            Discover the ancestral guilds, historical trades, and native regions of our primary community branches.
           </p>
         </div>
 
@@ -134,61 +70,81 @@ export const History: React.FC = () => {
           </div>
         </div>
 
-        {/* Vertical Cards Responsive Grid */}
-        <motion.div 
-          className="grid grid-3 history-grid"
-          layout
-        >
-          <AnimatePresence mode="popLayout">
-            {filteredSurnames.map((item) => (
-              <motion.div
-                key={item.surname}
-                layout
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.9 }}
-                transition={{ duration: 0.4 }}
-                className="surname-grid-card"
-                id={`surname-card-${item.surname.toLowerCase()}`}
-              >
-                <div className="card-top-accent"></div>
-                <div className="card-main-content">
-                  <h3 className="card-surname-title">{item.surname}</h3>
-                  <div className="card-trade-badge">{item.trade}</div>
-                  
-                  <p className="card-short-desc">
-                    {item.origin.length > 95 ? item.origin.substring(0, 95) + '...' : item.origin}
-                  </p>
-
-                  <div className="card-metadata-section">
-                    <div className="meta-row">
-                      <MapPin size={14} className="meta-icon" />
-                      <span>{item.region}</span>
-                    </div>
-                    <div className="meta-row">
-                      <Users size={14} className="meta-icon" />
-                      <span>{item.count} Families Registered</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="card-actions">
-                  <button 
-                    onClick={() => setSelectedSurname(item)}
-                    className="btn btn-secondary card-details-btn"
-                  >
-                    View Details
-                  </button>
-                </div>
-              </motion.div>
-            ))}
-          </AnimatePresence>
-        </motion.div>
-
-        {filteredSurnames.length === 0 && (
-          <div className="no-history-results">
-            <p>No surnames match your query. Try searching another name or native region.</p>
+        {isLoading ? (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: '60px 0' }}>
+            <Loader2 className="animate-spin" size={36} color="var(--color-primary)" />
           </div>
+        ) : error ? (
+          <div className="alert alert-error" style={{ textAlign: 'center', padding: '20px', marginBottom: '40px' }}>
+            {error}
+          </div>
+        ) : surnames.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--color-text-light)' }}>
+            <p>No surname history records published at this time.</p>
+          </div>
+        ) : (
+          <>
+            {/* Vertical Cards Responsive Grid */}
+            <motion.div 
+              className="grid grid-3 history-grid"
+              layout
+            >
+              <AnimatePresence mode="popLayout">
+                {filteredSurnames.map((item) => {
+                  const trade = item.description || 'Traditional Heritage Guild';
+                  const originText = item.history;
+                  return (
+                    <motion.div
+                      key={item.id}
+                      layout
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.9 }}
+                      transition={{ duration: 0.4 }}
+                      className="surname-grid-card"
+                      id={`surname-card-${item.surname.toLowerCase()}`}
+                    >
+                      <div className="card-top-accent"></div>
+                      <div className="card-main-content">
+                        <h3 className="card-surname-title">{item.surname}</h3>
+                        <div className="card-trade-badge">{trade}</div>
+                        
+                        <p className="card-short-desc">
+                          {originText.length > 95 ? originText.substring(0, 95) + '...' : originText}
+                        </p>
+
+                        <div className="card-metadata-section">
+                          <div className="meta-row">
+                            <MapPin size={14} className="meta-icon" />
+                            <span>{item.native_region}</span>
+                          </div>
+                          <div className="meta-row">
+                            <Users size={14} className="meta-icon" />
+                            <span>Community Branch</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="card-actions">
+                        <button 
+                          onClick={() => handleViewDetails(item)}
+                          className="btn btn-secondary card-details-btn"
+                        >
+                          View Details
+                        </button>
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </AnimatePresence>
+            </motion.div>
+
+            {filteredSurnames.length === 0 && (
+              <div className="no-history-results">
+                <p>No surnames match your query. Try searching another name or native region.</p>
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -216,20 +172,20 @@ export const History: React.FC = () => {
                 <span className="modal-badge">Ancestral Registry</span>
                 <h2>{selectedSurname.surname} Lineage</h2>
                 <div className="modal-tag-row">
-                  <span className="modal-tag"><Award size={13} /> {selectedSurname.trade}</span>
-                  <span className="modal-tag"><MapPin size={13} /> {selectedSurname.region}</span>
+                  <span className="modal-tag"><Award size={13} /> {selectedSurname.description || 'Traditional Heritage Guild'}</span>
+                  <span className="modal-tag"><MapPin size={13} /> {selectedSurname.native_region}</span>
                 </div>
               </div>
 
               <div className="modal-body-section">
                 <h3>Ancestral Origins & Historical Trade</h3>
-                <p>{selectedSurname.origin}</p>
+                <p>{selectedSurname.history}</p>
 
                 <div className="modal-stats-box">
                   <div className="modal-stat-data">
                     <Users size={20} />
                     <div>
-                      <strong>{selectedSurname.count} Active Families</strong>
+                      <strong>100+ Active Families</strong>
                       <span>Verified members in the digital directory</span>
                     </div>
                   </div>

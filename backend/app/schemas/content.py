@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field, EmailStr, ConfigDict
 from datetime import date, datetime
-from typing import Optional, List
+from typing import Optional, List, Any, Dict
 
 # --- NOTICE SCHEMAS ---
 class NoticeCreate(BaseModel):
@@ -78,6 +78,7 @@ class EventCreate(BaseModel):
     is_featured: bool = False
     registration_deadline: Optional[date] = None
     max_capacity: Optional[int] = Field(None, ge=1)
+    form_fields: Optional[Any] = None
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
@@ -103,6 +104,7 @@ class EventUpdate(BaseModel):
     is_featured: Optional[bool] = None
     registration_deadline: Optional[date] = None
     max_capacity: Optional[int] = Field(None, ge=1)
+    form_fields: Optional[Any] = None
 
 class EventResponse(EventCreate):
     id: int
@@ -316,5 +318,80 @@ class SurnameHistoryResponse(SurnameHistoryCreate):
             }
         }
     )
+
+
+
+# --- ANNUAL REPORT SCHEMAS ---
+class AnnualReportCreate(BaseModel):
+    title: str = Field(..., min_length=2, max_length=255)
+    description: Optional[str] = None
+    financial_year: str = Field(..., min_length=2, max_length=50)
+    file_url: str = Field(..., min_length=2, max_length=512)
+    display_order: int = 0
+    is_published: bool = True
+
+class AnnualReportUpdate(BaseModel):
+    title: Optional[str] = Field(None, min_length=2, max_length=255)
+    description: Optional[str] = None
+    financial_year: Optional[str] = Field(None, min_length=2, max_length=50)
+    file_url: Optional[str] = Field(None, min_length=2, max_length=512)
+    display_order: Optional[int] = None
+    is_published: Optional[bool] = None
+
+class AnnualReportResponse(AnnualReportCreate):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+
+# --- EVENT REGISTRATION SCHEMAS ---
+class EventRegistrationCreate(BaseModel):
+    name: str = Field(..., min_length=2, max_length=255)
+    mobile: Optional[str] = Field(None, max_length=20)
+    email: Optional[EmailStr] = None
+    member_count: int = Field(1, ge=1)
+    remarks: Optional[str] = None
+    custom_responses: Optional[Dict[str, Any]] = None
+
+class EventRegistrationResponse(EventRegistrationCreate):
+    id: int
+    event_id: int
+    user_id: Optional[int] = None
+    status: str
+    created_at: datetime
+    updated_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+class EventRegistrationsSummaryResponse(BaseModel):
+    total_registrations: int
+    total_expected_attendees: int
+    registrations: List[EventRegistrationResponse]
+
+# --- MEMBER ANNOUNCEMENT SCHEMAS ---
+class MemberAnnouncementCreate(BaseModel):
+    title: str = Field(..., min_length=2, max_length=255)
+    content: str = Field(..., min_length=2)
+    category: str = Field("General", max_length=100)
+    is_published: bool = True
+    display_order: int = 0
+    expiry_date: Optional[date] = None
+
+class MemberAnnouncementUpdate(BaseModel):
+    title: Optional[str] = Field(None, min_length=2, max_length=255)
+    content: Optional[str] = Field(None, min_length=2)
+    category: Optional[str] = Field(None, max_length=100)
+    is_published: Optional[bool] = None
+    display_order: Optional[int] = None
+    expiry_date: Optional[date] = None
+
+class MemberAnnouncementResponse(MemberAnnouncementCreate):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
 
 

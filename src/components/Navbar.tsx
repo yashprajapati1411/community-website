@@ -5,13 +5,13 @@ import { useAuth } from '../context/AuthContext';
 interface NavbarProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
-  isLoggedIn?: boolean;
-  setIsLoggedIn?: (login: boolean) => void;
+  isAdmin?: boolean;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
   activeTab,
   setActiveTab,
+  isAdmin = false,
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { isAuthenticated, logout } = useAuth();
@@ -25,6 +25,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     { id: 'gallery', label: 'Gallery' },
     { id: 'history', label: 'History' },
     { id: 'portal', label: 'Members Portal' },
+    ...(isAdmin ? [{ id: 'admin', label: 'Admin' }] : []),
   ];
 
   const handleNavClick = (tabId: string) => {
@@ -61,7 +62,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         <nav className="desktop-nav">
           <ul className="navbar-links">
             {navItems.map((item) => (
-              <li key={item.id}>
+              <li key={item.id} style={{ display: 'flex', alignItems: 'center' }}>
                 <a
                   href={`#${item.id}`}
                   className={item.id === 'portal' ? `navbar-portal-btn ${activeTab === 'portal' ? 'active' : ''}` : `navbar-link ${activeTab === item.id ? 'active' : ''}`}
@@ -197,15 +198,16 @@ export const Navbar: React.FC<NavbarProps> = ({
           font-family: var(--font-body);
           font-weight: 600;
           font-size: 14px;
-          padding: 8px 20px;
+          padding: 6px 16px;
           border-radius: var(--border-radius-full);
           text-decoration: none;
           display: inline-flex;
           align-items: center;
           justify-content: center;
+          white-space: nowrap;
           box-shadow: 0 4px 10px rgba(159, 64, 45, 0.2);
           transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-          margin-left: 12px;
+          margin-left: 6px;
           border: 1px solid var(--color-primary);
         }
         .navbar-portal-btn:hover {

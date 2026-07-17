@@ -11,7 +11,10 @@ from app.schemas.member import (
     FamilyMemberCreate,
     FamilyMemberUpdate,
     MemberDashboardStats,
-    MemberDashboardSummary
+    MemberDashboardSummary,
+    DirectorySurnameGroupResponse,
+    DirectoryFamilyHeadResponse,
+    DirectoryFamilyMemberResponse
 )
 from app.schemas.content import NoticeResponse, EventResponse
 from app.schemas.booking import BookingInquiryResponse
@@ -44,11 +47,15 @@ class MemberService:
         return MemberProfileResponse(
             id=profile.id,
             user_id=profile.user_id,
+            surname=getattr(profile, "surname", "General") or "General",
             full_name=profile.full_name,
             village=profile.village,
+            city=getattr(profile, "city", "Ahmedabad") or "Ahmedabad",
             address=profile.address,
             mobile=profile.mobile,
+            occupation=getattr(profile, "occupation", None),
             is_verified=profile.is_verified,
+            profile_completed=getattr(profile, "profile_completed", True),
             email=profile.user.email if profile.user else None
         )
 
@@ -89,11 +96,15 @@ class MemberService:
         return MemberProfileResponse(
             id=profile_refreshed.id,
             user_id=profile_refreshed.user_id,
+            surname=getattr(profile_refreshed, "surname", "General") or "General",
             full_name=profile_refreshed.full_name,
             village=profile_refreshed.village,
+            city=getattr(profile_refreshed, "city", "Ahmedabad") or "Ahmedabad",
             address=profile_refreshed.address,
             mobile=profile_refreshed.mobile,
+            occupation=getattr(profile_refreshed, "occupation", None),
             is_verified=profile_refreshed.is_verified,
+            profile_completed=getattr(profile_refreshed, "profile_completed", True),
             email=profile_refreshed.user.email if profile_refreshed.user else None
         )
 
@@ -351,3 +362,52 @@ class MemberService:
             await MemberRepository.soft_delete_profile(db, profile)
         if in_tx:
             await db.commit()
+
+    @staticmethod
+    async def get_directory(db: AsyncSession) -> List[DirectorySurnameGroupResponse]:
+        """Fetch and hierarchically group active, verified, profile-completed community members by Surname."""
+        profiles = await MemberRepository.get_directory_profiles(db)
+        groups: dict[str, list[DirectoryFamilyHeadResponse]] = {}
+        for profile in profiles:
+            surn = getattr(profile, "surname", "General") or "General"
+            spouse_obj = next((fm for fm in profile.family_members if fm.relation.lower() == "spouse"), None)
+            spouse_name = spouse_obj.name if spouse_obj else "N/A"
+            members_list = [
+                DirectoryFamilyMemberResponse(
+                    id=fm.id,
+                    name=fm.name,
+                    relation=fm.relation,
+                    age=fm.age,
+                    occupation=getattr(fm, "occupation", "") or "",
+                    education=getattr(fm, "education", "") or ""
+                )
+                for fm in profile.family_members
+            ]
+            head = DirectoryFamilyHeadResponse(
+                id=f"SSPV-{profile.id}",
+                name=profile.full_name,
+                surname=surn,
+                city=getattr(profile, "city", "Ahmedabad") or "Ahmedabad",
+                village=profile.village,
+                contact=profile.mobile,
+                email=profile.user.email if profile.user else "",
+                occupation=getattr(profile, "occupation", "Business / Professional") or "Business / Professional",
+                address=profile.address,
+                membersCount=len(profile.family_members),
+                spouse=spouse_name,
+                members=members_list
+            )
+            groups.setdefault(surn, []).append(head)
+
+        result: List[DirectorySurnameGroupResponse] = []
+        for surn in sorted(groups.keys()):
+            heads = groups[surn]
+            result.append(
+                DirectorySurnameGroupResponse(
+                    surname=surn,
+                    count=len(heads),
+                    heads=heads
+                )
+            )
+        return result
+

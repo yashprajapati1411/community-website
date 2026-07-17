@@ -7,17 +7,66 @@ from app.schemas.content import (
     CommitteeMemberResponse, CommitteeMemberCreate, CommitteeMemberUpdate,
     GalleryAlbumResponse, GalleryAlbumCreate, GalleryAlbumUpdate, GalleryAlbumWithImagesResponse,
     GalleryImageResponse, GalleryImageCreate,
-    SurnameHistoryResponse, SurnameHistoryCreate, SurnameHistoryUpdate
+    SurnameHistoryResponse, SurnameHistoryCreate, SurnameHistoryUpdate,
+    AnnualReportResponse, AnnualReportCreate, AnnualReportUpdate,
+    EventRegistrationResponse, EventRegistrationCreate, EventRegistrationsSummaryResponse,
+    MemberAnnouncementCreate, MemberAnnouncementUpdate, MemberAnnouncementResponse
 )
 from app.exceptions.content import (
     NoticeNotFoundError, EventNotFoundError,
     CommitteeMemberNotFoundError, GalleryAlbumNotFoundError,
-    GalleryImageNotFoundError, SurnameHistoryNotFoundError
+    GalleryImageNotFoundError, SurnameHistoryNotFoundError, AnnualReportNotFoundError
 )
 from app.exceptions.auth import PermissionDeniedError
 from app.models.user import User
 
 class ContentService:
+    # --- MEMBER ANNOUNCEMENTS ---
+    @staticmethod
+    async def get_member_announcements(db: AsyncSession) -> List[MemberAnnouncementResponse]:
+        """Fetch all active published member announcements."""
+        anns = await ContentRepository.get_active_member_announcements(db)
+        return [MemberAnnouncementResponse.model_validate(a) for a in anns]
+
+    @staticmethod
+    async def get_all_member_announcements_admin(db: AsyncSession) -> List[MemberAnnouncementResponse]:
+        anns = await ContentRepository.get_all_member_announcements(db)
+        return [MemberAnnouncementResponse.model_validate(a) for a in anns]
+
+    @staticmethod
+    async def create_member_announcement_admin(db: AsyncSession, create_data: MemberAnnouncementCreate) -> MemberAnnouncementResponse:
+        in_tx = db.in_transaction()
+        async with (db.begin_nested() if in_tx else db.begin()):
+            ann = await ContentRepository.create_member_announcement(db, **create_data.model_dump())
+        if in_tx:
+            await db.commit()
+        await db.refresh(ann)
+        return MemberAnnouncementResponse.model_validate(ann)
+
+    @staticmethod
+    async def update_member_announcement_admin(db: AsyncSession, ann_id: int, update_data: MemberAnnouncementUpdate) -> MemberAnnouncementResponse:
+        in_tx = db.in_transaction()
+        async with (db.begin_nested() if in_tx else db.begin()):
+            ann = await ContentRepository.get_member_announcement_by_id(db, ann_id)
+            if not ann:
+                raise NoticeNotFoundError()
+            ann = await ContentRepository.update_member_announcement(db, ann, update_data.model_dump(exclude_unset=True))
+        if in_tx:
+            await db.commit()
+        await db.refresh(ann)
+        return MemberAnnouncementResponse.model_validate(ann)
+
+    @staticmethod
+    async def delete_member_announcement_admin(db: AsyncSession, ann_id: int) -> None:
+        in_tx = db.in_transaction()
+        async with (db.begin_nested() if in_tx else db.begin()):
+            ann = await ContentRepository.get_member_announcement_by_id(db, ann_id)
+            if not ann:
+                raise NoticeNotFoundError()
+            await ContentRepository.soft_delete_member_announcement(db, ann)
+        if in_tx:
+            await db.commit()
+
     # --- MEMBER / PUBLIC ANNOUNCEMENTS ---
     @staticmethod
     async def get_notices(db: AsyncSession) -> List[NoticeResponse]:
@@ -69,6 +118,13 @@ class ContentService:
         if not history:
             raise SurnameHistoryNotFoundError()
         return SurnameHistoryResponse.model_validate(history)
+
+    @staticmethod
+    async def get_active_reports(db: AsyncSession) -> List[AnnualReportResponse]:
+        """Fetch all active published annual reports (Public/Member)."""
+        reports = await ContentRepository.get_active_reports(db)
+        return [AnnualReportResponse.model_validate(r) for r in reports]
+
 
 
 
@@ -381,3 +437,84 @@ class ContentService:
             await ContentRepository.delete_history(db, history)
         if in_tx:
             await db.commit()
+
+    # --- ANNUAL REPORT CRUD (ADMIN) ---
+    @staticmethod
+    async def get_all_reports_admin(db: AsyncSession, current_user: User) -> List[AnnualReportResponse]:
+        if current_user.role != "admin":
+            raise PermissionDeniedError()
+        reports = await ContentRepository.get_all_reports_admin(db)
+        return [AnnualReportResponse.model_validate(r) for r in reports]
+
+    @staticmethod
+    async def create_report(db: AsyncSession, current_user: User, data: AnnualReportCreate) -> AnnualReportResponse:
+        if current_user.role != "admin":
+            raise PermissionDeniedError()
+        in_tx = db.in_transaction()
+        async with (db.begin_nested() if in_tx else db.begin()):
+            report = await ContentRepository.create_report(db, data.model_dump())
+        if in_tx:
+            await db.commit()
+        return AnnualReportResponse.model_validate(report)
+
+    @staticmethod
+    async def update_report(db: AsyncSession, current_user: User, id: int, data: AnnualReportUpdate) -> AnnualReportResponse:
+        if current_user.role != "admin":
+            raise PermissionDeniedError()
+        in_tx = db.in_transaction()
+        async with (db.begin_nested() if in_tx else db.begin()):
+            report = await ContentRepository.get_report_by_id(db, id)
+            if not report:
+                raise AnnualReportNotFoundError()
+            await ContentRepository.update_report(db, report, data.model_dump(exclude_unset=True))
+        if in_tx:
+            await db.commit()
+        report_ref = await ContentRepository.get_report_by_id(db, id)
+        return AnnualReportResponse.model_validate(report_ref)
+
+    @staticmethod
+    async def delete_report(db: AsyncSession, current_user: User, id: int) -> None:
+        if current_user.role != "admin":
+            raise PermissionDeniedError()
+        in_tx = db.in_transaction()
+        async with (db.begin_nested() if in_tx else db.begin()):
+            report = await ContentRepository.get_report_by_id(db, id)
+            if not report:
+                raise AnnualReportNotFoundError()
+            await ContentRepository.delete_report(db, report)
+        if in_tx:
+            await db.commit()
+
+    # --- EVENT REGISTRATIONS ---
+    @staticmethod
+    async def register_for_event(db: AsyncSession, event_id: int, data: EventRegistrationCreate, current_user: Optional[User] = None) -> EventRegistrationResponse:
+        event = await ContentRepository.get_event_by_id(db, event_id)
+        if not event:
+            raise EventNotFoundError()
+        in_tx = db.in_transaction()
+        reg_data = data.model_dump()
+        reg_data["event_id"] = event_id
+        if current_user:
+            reg_data["user_id"] = current_user.id
+        async with (db.begin_nested() if in_tx else db.begin()):
+            reg = await ContentRepository.create_event_registration(db, reg_data)
+        if in_tx:
+            await db.commit()
+        return EventRegistrationResponse.model_validate(reg)
+
+    @staticmethod
+    async def get_event_registrations_admin(db: AsyncSession, current_user: User, event_id: int) -> EventRegistrationsSummaryResponse:
+        if current_user.role != "admin":
+            raise PermissionDeniedError()
+        event = await ContentRepository.get_event_by_id(db, event_id)
+        if not event:
+            raise EventNotFoundError()
+        regs = await ContentRepository.get_event_registrations_by_event_id(db, event_id)
+        total_regs = len(regs)
+        total_attendees = sum(r.member_count for r in regs)
+        return EventRegistrationsSummaryResponse(
+            total_registrations=total_regs,
+            total_expected_attendees=total_attendees,
+            registrations=[EventRegistrationResponse.model_validate(r) for r in regs]
+        )
+

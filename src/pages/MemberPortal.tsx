@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { BookOpen, Users, FolderOpen, ArrowLeft, Eye, ShieldCheck, Download, Search, LogOut, Edit, Plus } from 'lucide-react';
+import { BookOpen, Users, FolderOpen, ArrowLeft, Eye, ShieldCheck, Download, Search, Edit, Plus } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
+import { authService } from '../services/authService';
 import { memberService } from '../services/memberService';
-import type { MemberProfileResponse, FamilyMemberResponse } from '../services/memberService';
+import { publicService } from '../services/publicService';
+import type { MemberProfileResponse, FamilyMemberResponse, DirectorySurnameGroup, MemberAnnouncement } from '../services/memberService';
+import type { AnnualReportResponse } from '../services/publicService';
 import './MemberPortal.css';
 
 interface FamilyMember {
@@ -18,6 +21,7 @@ interface FamilyMember {
 interface FamilyHead {
   id: string;
   name: string;
+  surname?: string;
   city: string;
   membersCount: number;
   spouse: string;
@@ -29,25 +33,27 @@ interface FamilyHead {
   members: FamilyMember[];
 }
 
-interface MemberPortalProps {
-  isLoggedIn?: boolean;
-  setIsLoggedIn?: (login: boolean) => void;
-}
-
-export const MemberPortal: React.FC<MemberPortalProps> = () => {
-  const { isAuthenticated, isLoading: authLoading, login, logout } = useAuth();
+export const MemberPortal: React.FC = () => {
+  const { isAuthenticated, isLoading: authLoading, login } = useAuth();
   const [portalTab, setPortalTab] = useState<'home' | 'directory' | 'reports'>('home');
   
   // User Profile and Family state from backend APIs
   const [profileData, setProfileData] = useState<MemberProfileResponse | null>(null);
   const [familyMembers, setFamilyMembers] = useState<FamilyMemberResponse[]>([]);
+  const [directoryGroups, setDirectoryGroups] = useState<DirectorySurnameGroup[]>([]);
+  const [memberAnnouncements, setMemberAnnouncements] = useState<MemberAnnouncement[]>([]);
   const [portalLoading, setPortalLoading] = useState(false);
   const [portalError, setPortalError] = useState<string | null>(null);
+
+  const [annualReports, setAnnualReports] = useState<AnnualReportResponse[]>([]);
+  const [reportsLoading, setReportsLoading] = useState(false);
+
 
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [editForm, setEditForm] = useState({
     name: '',
+    surname: 'General',
     spouse: '',
     village: '',
     city: 'Ahmedabad',
@@ -63,22 +69,27 @@ export const MemberPortal: React.FC<MemberPortalProps> = () => {
     setPortalLoading(true);
     setPortalError(null);
     try {
-      const [profRes, famRes] = await Promise.all([
+      const [profRes, famRes, dirRes, annRes] = await Promise.all([
         memberService.getProfile(),
-        memberService.getFamilyMembers()
+        memberService.getFamilyMembers(),
+        memberService.getDirectory().catch(() => []),
+        memberService.getAnnouncements().catch(() => [])
       ]);
       setProfileData(profRes);
       setFamilyMembers(famRes);
+      setDirectoryGroups(dirRes || []);
+      setMemberAnnouncements(annRes || []);
       
       const spouseMember = famRes.find(m => m.relation.toLowerCase() === 'spouse');
       setEditForm({
         name: profRes.full_name,
+        surname: profRes.surname || 'General',
         spouse: spouseMember ? spouseMember.name : '',
         village: profRes.village,
-        city: 'Ahmedabad',
+        city: profRes.city || 'Ahmedabad',
         contact: profRes.mobile,
         email: profRes.email || '',
-        occupation: 'Business / Professional',
+        occupation: profRes.occupation || 'Business / Professional',
         address: profRes.address
       });
     } catch (err: any) {
@@ -96,17 +107,37 @@ export const MemberPortal: React.FC<MemberPortalProps> = () => {
     }
   }, [isAuthenticated, authLoading]);
 
+  const fetchAnnualReports = async () => {
+    setReportsLoading(true);
+    try {
+      const res = await publicService.getAnnualReports();
+      setAnnualReports(res);
+    } catch (err) {
+      console.error("Failed to fetch annual reports:", err);
+    } finally {
+      setReportsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (portalTab === 'reports') {
+      fetchAnnualReports();
+    }
+  }, [portalTab]);
+
+
   const spouseMember = familyMembers.find(m => m.relation.toLowerCase() === 'spouse');
   const profile: FamilyHead = profileData ? {
     id: `SSPV-${profileData.id}`,
     name: profileData.full_name,
-    city: editForm.city || 'Ahmedabad',
+    surname: profileData.surname || 'General',
+    city: profileData.city || editForm.city || 'Ahmedabad',
     membersCount: familyMembers.length,
     spouse: spouseMember ? spouseMember.name : (editForm.spouse || 'N/A'),
     village: profileData.village,
     contact: profileData.mobile,
     email: profileData.email || '',
-    occupation: editForm.occupation || 'Business / Professional',
+    occupation: profileData.occupation || editForm.occupation || 'Business / Professional',
     address: profileData.address,
     members: familyMembers.map(m => ({
       id: m.id,
@@ -119,6 +150,7 @@ export const MemberPortal: React.FC<MemberPortalProps> = () => {
   } : {
     id: 'SSPV-0000',
     name: 'Loading Member...',
+    surname: 'General',
     city: 'Ahmedabad',
     membersCount: 0,
     spouse: 'Loading...',
@@ -142,7 +174,23 @@ export const MemberPortal: React.FC<MemberPortalProps> = () => {
   const [authTab, setAuthTab] = useState<'login' | 'signup'>('login');
   const [signupName, setSignupName] = useState('');
   const [signupMobile, setSignupMobile] = useState('');
+  const [signupPassword, setSignupPassword] = useState('');
+  const [signupConfirmPassword, setSignupConfirmPassword] = useState('');
+  const [signupShowPassword, setSignupShowPassword] = useState(false);
   const [signupTerms, setSignupTerms] = useState(false);
+  const [signupError, setSignupError] = useState('');
+  const [signupSuccess, setSignupSuccess] = useState('');
+
+  // Forgot Password modal state
+  const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false);
+  const [forgotStep, setForgotStep] = useState<'request' | 'verify' | 'reset' | 'success'>('request');
+  const [forgotMobile, setForgotMobile] = useState('');
+  const [forgotOtp, setForgotOtp] = useState('');
+  const [forgotResetToken, setForgotResetToken] = useState('');
+  const [forgotNewPassword, setForgotNewPassword] = useState('');
+  const [forgotConfirmPassword, setForgotConfirmPassword] = useState('');
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotError, setForgotError] = useState('');
 
   // Family Member Management State
   const [isAddingMember, setIsAddingMember] = useState(false);
@@ -165,147 +213,16 @@ export const MemberPortal: React.FC<MemberPortalProps> = () => {
   // Search query for directory
   const [searchQuery, setSearchQuery] = useState('');
 
-  // 12 Surnames with Mock Family Counts
-  const surnamesList = [
-    { name: 'Kukadiya', count: 142 },
-    { name: 'Chandegra', count: 98 },
-    { name: 'Vavadiya', count: 120 },
-    { name: 'Gohil', count: 110 },
-    { name: 'Parmar', count: 215 },
-    { name: 'Chauhan', count: 185 },
-    { name: 'Mistry', count: 130 },
-    { name: 'Prajapati', count: 320 },
-    { name: 'Solanki', count: 115 },
-    { name: 'Chavda', count: 94 },
-    { name: 'Vaghela', count: 88 },
-    { name: 'Rathod', count: 104 },
-  ];
-
-  // Mock Family Heads Database
-  const familyHeadsData: Record<string, FamilyHead[]> = {
-    Parmar: [
-      {
-        id: 'SSPV-4829',
-        name: 'Rajesh Parmar',
-        city: 'Ahmedabad',
-        membersCount: 4,
-        spouse: 'Sneha Parmar',
-        village: 'Junagadh',
-        contact: '+91 98765 43210',
-        email: 'rajesh.parmar@sspv.org',
-        occupation: 'Business Owner',
-        address: '42, Heritage Enclave, Vastrapur, Ahmedabad - 380015',
-        members: [
-          { name: 'Rajesh Parmar', relation: 'Self (Head)', age: 48, occupation: 'Business Owner', education: 'B.Com' },
-          { name: 'Sneha Parmar', relation: 'Spouse', age: 44, occupation: 'Homemaker', education: 'B.A.' },
-          { name: 'Rahul Parmar', relation: 'Son', age: 22, occupation: 'Software Engineer', education: 'B.Tech IT' },
-          { name: 'Aarti Parmar', relation: 'Daughter', age: 18, occupation: 'Student', education: 'Undergrad Commerce' },
-        ]
-      },
-      {
-        id: 'SSPV-4830',
-        name: 'Mahesh Parmar',
-        city: 'Rajkot',
-        membersCount: 3,
-        spouse: 'Lilaben Parmar',
-        village: 'Somnath',
-        contact: '+91 98765 43211',
-        email: 'mahesh.parmar@sspv.org',
-        occupation: 'Architectural Consultant',
-        address: '102, Shrinathji Complex, Kalawad Road, Rajkot - 360005',
-        members: [
-          { name: 'Mahesh Parmar', relation: 'Self (Head)', age: 52, occupation: 'Architectural Consultant', education: 'B.Arch' },
-          { name: 'Lilaben Parmar', relation: 'Spouse', age: 48, occupation: 'Interior Designer', education: 'Diploma Arts' },
-          { name: 'Karan Parmar', relation: 'Son', age: 24, occupation: 'Civil Engineer', education: 'M.Tech Structural' },
-        ]
-      },
-      {
-        id: 'SSPV-4831',
-        name: 'Suresh Parmar',
-        city: 'Surat',
-        membersCount: 3,
-        spouse: 'Kirtidaben Parmar',
-        village: 'Veraval',
-        contact: '+91 98765 43212',
-        email: 'suresh.parmar@sspv.org',
-        occupation: 'Diamond Merchant',
-        address: 'A-304, Green Heights, Adajan, Surat - 395009',
-        members: [
-          { name: 'Suresh Parmar', relation: 'Self (Head)', age: 50, occupation: 'Diamond Merchant', education: 'High School' },
-          { name: 'Kirtidaben Parmar', relation: 'Spouse', age: 45, occupation: 'Boutique Owner', education: 'B.A.' },
-          { name: 'Pooja Parmar', relation: 'Daughter', age: 20, occupation: 'Student', education: 'B.Des Fashion' },
-        ]
-      }
-    ],
-    Kukadiya: [
-      {
-        id: 'SSPV-3012',
-        name: 'Jayesh Kukadiya',
-        city: 'Ahmedabad',
-        membersCount: 5,
-        spouse: 'Savitaben Kukadiya',
-        village: 'Keshod',
-        contact: '+91 94260 11223',
-        email: 'jayesh.k@sspv.org',
-        occupation: 'Manufacturing Business',
-        address: 'Block-D, 401, Rivera Heights, Gota, Ahmedabad - 382481',
-        members: [
-          { name: 'Jayesh Kukadiya', relation: 'Self (Head)', age: 55, occupation: 'Manufacturing Business', education: 'D.M.E' },
-          { name: 'Savitaben Kukadiya', relation: 'Spouse', age: 51, occupation: 'Homemaker', education: 'High School' },
-          { name: 'Hardik Kukadiya', relation: 'Son', age: 27, occupation: 'Production Manager', education: 'B.E. Mechanical' },
-          { name: 'Dr. Riddhi Kukadiya', relation: 'Daughter-in-law', age: 26, occupation: 'Dentist', education: 'B.D.S' },
-          { name: 'Dharaben Kukadiya', relation: 'Daughter', age: 21, occupation: 'Student', education: 'M.B.A Finance' },
-        ]
-      }
-    ],
-    Prajapati: [
-      {
-        id: 'SSPV-1048',
-        name: 'Mansukhbhai Prajapati',
-        city: 'Ahmedabad',
-        membersCount: 4,
-        spouse: 'Kamlaben Prajapati',
-        village: 'Wankaner',
-        contact: '+91 99240 88776',
-        email: 'mansukh.clay@sspv.org',
-        occupation: 'Clay Earthenware Pioneer',
-        address: 'ClayTech Villa, Near Science City, Ahmedabad - 380060',
-        members: [
-          { name: 'Mansukhbhai Prajapati', relation: 'Self (Head)', age: 60, occupation: 'Clay Earthenware Pioneer', education: 'Primary Education' },
-          { name: 'Kamlaben Prajapati', relation: 'Spouse', age: 56, occupation: 'Quality Auditor', education: 'High School' },
-          { name: 'Vijay Prajapati', relation: 'Son', age: 32, occupation: 'R&D Lead', education: 'B.Tech Ceramic Eng' },
-          { name: 'Bhumika Prajapati', relation: 'Daughter', age: 25, occupation: 'Marketing Executive', education: 'M.B.A Marketing' },
-        ]
-      }
-    ]
-  };
+  // Live Surnames list derived from directory API
+  const surnamesList = directoryGroups.map(group => ({
+    name: group.surname,
+    count: group.count
+  }));
 
   const getFamilyHeadsForSurname = (surnameName: string): FamilyHead[] => {
-    const defaultList = familyHeadsData[surnameName] || [
-      {
-        id: `SSPV-${Math.floor(1000 + Math.random() * 9000)}`,
-        name: `Kishorbhai ${surnameName}`,
-        city: 'Ahmedabad',
-        membersCount: 4,
-        spouse: `Manjuben ${surnameName}`,
-        village: 'Gir-Gadhada',
-        contact: '+91 98000 00000',
-        email: `kishor.${surnameName.toLowerCase()}@sspv.org`,
-        occupation: 'Retired Government Officer',
-        address: `12, Somnath Society, Satellite, Ahmedabad - 380015`,
-        members: [
-          { name: `Kishorbhai ${surnameName}`, relation: 'Self (Head)', age: 56, occupation: 'Retired Government Officer', education: 'M.A.' },
-          { name: `Manjuben ${surnameName}`, relation: 'Spouse', age: 52, occupation: 'Homemaker', education: 'High School' },
-          { name: `Pratik ${surnameName}`, relation: 'Son', age: 28, occupation: 'Civil Architect', education: 'B.Arch' },
-          { name: `Neha ${surnameName}`, relation: 'Daughter', age: 24, occupation: 'Chartered Accountant', education: 'C.A.' },
-        ]
-      }
-    ];
-
-    if (surnameName === 'Parmar') {
-      return defaultList.map(head => head.id === profile.id ? { ...head, ...profile } : head);
-    }
-    return defaultList;
+    const group = directoryGroups.find(g => g.surname === surnameName);
+    if (!group) return [];
+    return group.heads as FamilyHead[];
   };
 
   const handleSurnameClick = (surname: string) => {
@@ -331,15 +248,16 @@ export const MemberPortal: React.FC<MemberPortalProps> = () => {
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) {
-      setLoginError('Please enter both email and password.');
+      setLoginError('Please enter your Registered Mobile Number and Password.');
       return;
     }
     setIsSubmitting(true);
     setLoginError('');
     try {
-      await login({ email, password });
+      await login({ mobile: email, password });
       setEditForm({
         name: profile.name,
+        surname: profile.surname || 'General',
         spouse: profile.spouse,
         village: profile.village,
         city: profile.city,
@@ -349,29 +267,124 @@ export const MemberPortal: React.FC<MemberPortalProps> = () => {
         address: profile.address
       });
     } catch (err: any) {
-      const errorMsg = err.response?.data?.detail || 'Invalid credentials. Please verify your email and password.';
+      const errorMsg = err.response?.data?.detail || 'Invalid credentials. Please verify your Mobile Number and Password.';
       setLoginError(typeof errorMsg === 'string' ? errorMsg : JSON.stringify(errorMsg));
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleSignupSubmit = (e: React.FormEvent) => {
+  const handleSignupSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!signupName || !signupMobile) {
-      alert("Please fill in all required fields.");
+    setSignupError('');
+    setSignupSuccess('');
+    if (!signupName || !signupMobile || !signupPassword || !signupConfirmPassword) {
+      setSignupError("Please fill in all required fields.");
+      return;
+    }
+    if (signupPassword.length < 6) {
+      setSignupError("Password must be at least 6 characters long.");
+      return;
+    }
+    if (signupPassword !== signupConfirmPassword) {
+      setSignupError("Passwords do not match.");
       return;
     }
     if (!signupTerms) {
-      alert("Please accept the terms and conditions to proceed.");
+      setSignupError("Please accept the terms and conditions to proceed.");
       return;
     }
-    alert(`Registration request submitted for verification!\nFamily Head Name: ${signupName}\nMobile: +91 ${signupMobile}\nWe will contact you shortly after community verification.`);
-    // Reset signup form
-    setSignupName('');
-    setSignupMobile('');
-    setSignupTerms(false);
+    setIsSubmitting(true);
+    try {
+      await authService.register({
+        full_name: signupName,
+        mobile: signupMobile,
+        password: signupPassword,
+        confirm_password: signupConfirmPassword,
+        village: "Ahmedabad"
+      });
+      setSignupSuccess(`Registration request submitted successfully! Your account is pending review and will become active once approved by an administrator.`);
+      setSignupName('');
+      setSignupMobile('');
+      setSignupPassword('');
+      setSignupConfirmPassword('');
+      setSignupTerms(false);
+    } catch (err: any) {
+      const msg = err.response?.data?.detail || err.message || "Failed to submit registration request.";
+      setSignupError(typeof msg === 'string' ? msg : JSON.stringify(msg));
+    } finally {
+      setIsSubmitting(false);
+    }
   };
+
+  // Forgot Password modal handlers
+  const handleForgotRequestOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!forgotMobile || forgotMobile.length < 10) {
+      setForgotError("Please enter a valid 10-digit mobile number.");
+      return;
+    }
+    setForgotLoading(true);
+    setForgotError('');
+    try {
+      await authService.requestForgotPasswordOtp(forgotMobile);
+      setForgotStep('verify');
+    } catch (err: any) {
+      const msg = err.response?.data?.detail || "Could not send OTP. Please try again.";
+      setForgotError(typeof msg === 'string' ? msg : JSON.stringify(msg));
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
+  const handleForgotVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!forgotOtp || forgotOtp.length !== 6) {
+      setForgotError("Please enter the 6-digit OTP received via SMS.");
+      return;
+    }
+    setForgotLoading(true);
+    setForgotError('');
+    try {
+      const res = await authService.verifyForgotPasswordOtp(forgotMobile, forgotOtp);
+      setForgotResetToken(res.reset_token);
+      setForgotStep('reset');
+    } catch (err: any) {
+      const msg = err.response?.data?.detail || "Invalid or expired OTP.";
+      setForgotError(typeof msg === 'string' ? msg : JSON.stringify(msg));
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
+  const handleForgotResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (forgotNewPassword.length < 6) {
+      setForgotError("New password must be at least 6 characters long.");
+      return;
+    }
+    if (forgotNewPassword !== forgotConfirmPassword) {
+      setForgotError("New Password and Confirm Password do not match.");
+      return;
+    }
+    setForgotLoading(true);
+    setForgotError('');
+    try {
+      await authService.resetForgotPassword(
+        forgotMobile,
+        forgotResetToken,
+        forgotNewPassword,
+        forgotConfirmPassword
+      );
+      setForgotStep('success');
+    } catch (err: any) {
+      const msg = err.response?.data?.detail || "Could not reset password. Please try again.";
+      setForgotError(typeof msg === 'string' ? msg : JSON.stringify(msg));
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
 
   // Filtered Heads
   const activeHeads = selectedSurname ? getFamilyHeadsForSurname(selectedSurname) : [];
@@ -472,12 +485,12 @@ export const MemberPortal: React.FC<MemberPortalProps> = () => {
 
                   <form onSubmit={handleLoginSubmit} className="login-fields-form">
                     <div className="login-form-group">
-                      <label className="login-form-label" htmlFor="login-email">Registered Mobile or Email</label>
+                      <label className="login-form-label" htmlFor="login-email">Mobile Number</label>
                       <input 
                         id="login-email"
                         className="login-form-input"
                         type="text" 
-                        placeholder="e.g. 98765 43210"
+                        placeholder="98765 43210"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         required
@@ -490,7 +503,11 @@ export const MemberPortal: React.FC<MemberPortalProps> = () => {
                         <button 
                           type="button" 
                           className="login-forgot-link"
-                          onClick={() => alert("Demo Password Reset: To reset, please contact IT desk at info@sorathiyaprajapati.org.")}
+                          onClick={() => {
+                            setForgotError('');
+                            setForgotStep('request');
+                            setShowForgotPasswordModal(true);
+                          }}
                         >
                           Forgot?
                         </button>
@@ -536,7 +553,7 @@ export const MemberPortal: React.FC<MemberPortalProps> = () => {
                     <div className="login-demo-card">
                       <span>
                         <strong>Demo Credentials:</strong><br />
-                        Email: <code>admin@example.com</code> / Password: <code>adminpassword</code>
+                        Mobile Number: <code>9999999999</code> / Password: <code>987654</code>
                       </span>
                     </div>
                   </form>
@@ -553,6 +570,18 @@ export const MemberPortal: React.FC<MemberPortalProps> = () => {
                     <span className="material-symbols-outlined login-signup-banner-icon">verified</span>
                     <span className="login-signup-banner-text">Community Verification Required</span>
                   </div>
+
+                  {signupError && (
+                    <div className="profile-success-msg" style={{ backgroundColor: '#fce8e6', color: '#b7221b', border: '1px solid rgba(183, 34, 27, 0.2)', marginBottom: '16px' }}>
+                      {signupError}
+                    </div>
+                  )}
+
+                  {signupSuccess && (
+                    <div className="profile-success-msg" style={{ backgroundColor: '#e6f4ea', color: '#137333', border: '1px solid rgba(19, 115, 51, 0.2)', marginBottom: '16px' }}>
+                      {signupSuccess}
+                    </div>
+                  )}
 
                   <form onSubmit={handleSignupSubmit} className="login-fields-form">
                     <div className="login-form-group">
@@ -585,6 +614,43 @@ export const MemberPortal: React.FC<MemberPortalProps> = () => {
                     </div>
 
                     <div className="login-form-group">
+                      <label className="login-form-label" htmlFor="signup-password">Password</label>
+                      <div className="login-password-input-container">
+                        <input 
+                          id="signup-password"
+                          className="login-form-input"
+                          type={signupShowPassword ? 'text' : 'password'} 
+                          placeholder="Min 6 characters"
+                          value={signupPassword}
+                          onChange={(e) => setSignupPassword(e.target.value)}
+                          required
+                        />
+                        <button 
+                          type="button"
+                          className="login-password-toggle"
+                          onClick={() => setSignupShowPassword(!signupShowPassword)}
+                        >
+                          <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>
+                            {signupShowPassword ? 'visibility_off' : 'visibility'}
+                          </span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="login-form-group">
+                      <label className="login-form-label" htmlFor="signup-confirm-password">Confirm Password</label>
+                      <input 
+                        id="signup-confirm-password"
+                        className="login-form-input"
+                        type={signupShowPassword ? 'text' : 'password'} 
+                        placeholder="Re-enter password"
+                        value={signupConfirmPassword}
+                        onChange={(e) => setSignupConfirmPassword(e.target.value)}
+                        required
+                      />
+                    </div>
+
+                    <div className="login-form-group">
                       <label className="login-checkbox-label" htmlFor="terms-checkbox">
                         <input 
                           id="terms-checkbox"
@@ -602,8 +668,8 @@ export const MemberPortal: React.FC<MemberPortalProps> = () => {
                       </label>
                     </div>
 
-                    <button type="submit" className="login-submit-button" id="signup-submit-btn">
-                      <span>Request Registration</span>
+                    <button type="submit" className="login-submit-button" id="signup-submit-btn" disabled={isSubmitting}>
+                      <span>{isSubmitting ? 'Submitting...' : 'Request Registration'}</span>
                       <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>how_to_reg</span>
                     </button>
                   </form>
@@ -621,6 +687,180 @@ export const MemberPortal: React.FC<MemberPortalProps> = () => {
               </div>
             </motion.div>
           </div>
+
+          {/* Forgot Password Modal */}
+          {showForgotPasswordModal && (
+            <div className="modal-overlay" style={{ zIndex: 9999 }}>
+              <div className="modal-card" style={{ maxWidth: '440px', width: '100%' }}>
+                <div className="modal-header">
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 600 }}>Password Reset</h3>
+                    <p style={{ margin: 0, fontSize: '0.875rem', color: '#5f6368' }}>Secure SMS verification via MSG91</p>
+                  </div>
+                  <button
+                    type="button"
+                    className="modal-close-btn"
+                    onClick={() => setShowForgotPasswordModal(false)}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.5rem' }}
+                  >
+                    ×
+                  </button>
+                </div>
+
+                <div className="modal-body" style={{ padding: '24px' }}>
+                  {forgotError && (
+                    <div className="profile-success-msg" style={{ backgroundColor: '#fce8e6', color: '#b7221b', border: '1px solid rgba(183, 34, 27, 0.2)', marginBottom: '16px' }}>
+                      {forgotError}
+                    </div>
+                  )}
+
+                  {forgotStep === 'request' && (
+                    <form onSubmit={handleForgotRequestOtp}>
+                      <p style={{ fontSize: '0.925rem', color: '#3c4043', marginBottom: '16px' }}>
+                        Enter your registered 10-digit mobile number. We will send a 6-digit verification code to your phone.
+                      </p>
+                      <div className="login-form-group">
+                        <label className="login-form-label" htmlFor="forgot-mobile">Mobile Number</label>
+                        <div className="login-tel-input-wrapper">
+                          <span className="login-tel-prefix">+91</span>
+                          <input
+                            id="forgot-mobile"
+                            className="login-form-input"
+                            type="tel"
+                            placeholder="98765 43210"
+                            value={forgotMobile}
+                            onChange={(e) => setForgotMobile(e.target.value)}
+                            required
+                          />
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '24px' }}>
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          onClick={() => setShowForgotPasswordModal(false)}
+                          style={{ padding: '10px 18px', borderRadius: '8px', border: '1px solid #dadce0', background: '#fff', cursor: 'pointer' }}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          className="login-submit-button"
+                          disabled={forgotLoading}
+                          style={{ width: 'auto', padding: '10px 24px' }}
+                        >
+                          <span>{forgotLoading ? 'Sending...' : 'Send OTP'}</span>
+                        </button>
+                      </div>
+                    </form>
+                  )}
+
+                  {forgotStep === 'verify' && (
+                    <form onSubmit={handleForgotVerifyOtp}>
+                      <p style={{ fontSize: '0.925rem', color: '#3c4043', marginBottom: '16px' }}>
+                        Enter the 6-digit OTP sent to <strong>+91 {forgotMobile}</strong>. Code expires in 5 minutes.
+                      </p>
+                      <div className="login-form-group">
+                        <label className="login-form-label" htmlFor="forgot-otp">6-Digit OTP</label>
+                        <input
+                          id="forgot-otp"
+                          className="login-form-input"
+                          type="text"
+                          maxLength={6}
+                          placeholder="123456"
+                          value={forgotOtp}
+                          onChange={(e) => setForgotOtp(e.target.value)}
+                          required
+                          style={{ letterSpacing: '4px', fontSize: '1.2rem', textAlign: 'center' }}
+                        />
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '24px' }}>
+                        <button
+                          type="button"
+                          onClick={handleForgotRequestOtp}
+                          style={{ background: 'none', border: 'none', color: '#1a73e8', cursor: 'pointer', fontSize: '0.875rem' }}
+                        >
+                          Resend OTP
+                        </button>
+                        <div style={{ display: 'flex', gap: '12px' }}>
+                          <button
+                            type="submit"
+                            className="login-submit-button"
+                            disabled={forgotLoading}
+                            style={{ width: 'auto', padding: '10px 24px' }}
+                          >
+                            <span>{forgotLoading ? 'Verifying...' : 'Verify Code'}</span>
+                          </button>
+                        </div>
+                      </div>
+                    </form>
+                  )}
+
+                  {forgotStep === 'reset' && (
+                    <form onSubmit={handleForgotResetPassword}>
+                      <p style={{ fontSize: '0.925rem', color: '#3c4043', marginBottom: '16px' }}>
+                        Set a new password for your account.
+                      </p>
+                      <div className="login-form-group">
+                        <label className="login-form-label" htmlFor="forgot-new-password">New Password</label>
+                        <input
+                          id="forgot-new-password"
+                          className="login-form-input"
+                          type="password"
+                          placeholder="Min 6 characters"
+                          value={forgotNewPassword}
+                          onChange={(e) => setForgotNewPassword(e.target.value)}
+                          required
+                        />
+                      </div>
+                      <div className="login-form-group">
+                        <label className="login-form-label" htmlFor="forgot-confirm-password">Confirm New Password</label>
+                        <input
+                          id="forgot-confirm-password"
+                          className="login-form-input"
+                          type="password"
+                          placeholder="Re-enter new password"
+                          value={forgotConfirmPassword}
+                          onChange={(e) => setForgotConfirmPassword(e.target.value)}
+                          required
+                        />
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '24px' }}>
+                        <button
+                          type="submit"
+                          className="login-submit-button"
+                          disabled={forgotLoading}
+                          style={{ width: 'auto', padding: '10px 24px' }}
+                        >
+                          <span>{forgotLoading ? 'Resetting...' : 'Save New Password'}</span>
+                        </button>
+                      </div>
+                    </form>
+                  )}
+
+                  {forgotStep === 'success' && (
+                    <div style={{ textAlign: 'center', padding: '16px 0' }}>
+                      <span className="material-symbols-outlined" style={{ fontSize: '48px', color: '#137333', marginBottom: '12px' }}>check_circle</span>
+                      <h4 style={{ margin: '0 0 8px 0', fontSize: '1.1rem', color: '#202124' }}>Password Reset Successfully</h4>
+                      <p style={{ fontSize: '0.9rem', color: '#5f6368', marginBottom: '24px' }}>
+                        You can now log in using your registered mobile number and your new password.
+                      </p>
+                      <button
+                        type="button"
+                        className="login-submit-button"
+                        onClick={() => {
+                          setShowForgotPasswordModal(false);
+                          setForgotStep('request');
+                        }}
+                      >
+                        <span>Return to Login</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </main>
       </div>
     );
@@ -710,6 +950,7 @@ export const MemberPortal: React.FC<MemberPortalProps> = () => {
                           } else {
                             setEditForm({
                               name: profile.name,
+                              surname: profile.surname || 'General',
                               spouse: profile.spouse,
                               village: profile.village,
                               city: profile.city,
@@ -739,10 +980,13 @@ export const MemberPortal: React.FC<MemberPortalProps> = () => {
                         setIsSavingProfile(true);
                         try {
                           await memberService.updateProfile({
+                            surname: editForm.surname,
                             full_name: editForm.name,
                             village: editForm.village,
+                            city: editForm.city,
                             address: editForm.address,
-                            mobile: cleanMobile
+                            mobile: cleanMobile,
+                            occupation: editForm.occupation
                           });
                           const existingSpouse = familyMembers.find(m => m.relation.toLowerCase() === 'spouse');
                           if (editForm.spouse.trim()) {
@@ -763,15 +1007,27 @@ export const MemberPortal: React.FC<MemberPortalProps> = () => {
                           setIsSavingProfile(false);
                         }
                       }} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                        <div className="form-group" style={{ marginBottom: 0 }}>
-                          <label style={{ fontSize: '11px', fontWeight: 'bold' }}>Full Name *</label>
-                          <input 
-                            type="text" 
-                            value={editForm.name} 
-                            onChange={(e) => setEditForm(prev => ({ ...prev, name: e.target.value }))}
-                            required
-                            style={{ padding: '8px 12px', fontSize: '13px', borderRadius: '6px', border: '1px solid var(--color-outline-variant)' }}
-                          />
+                        <div className="grid grid-2" style={{ gap: '12px' }}>
+                          <div className="form-group" style={{ marginBottom: 0 }}>
+                            <label style={{ fontSize: '11px', fontWeight: 'bold' }}>Surname *</label>
+                            <input 
+                              type="text" 
+                              value={editForm.surname} 
+                              onChange={(e) => setEditForm(prev => ({ ...prev, surname: e.target.value }))}
+                              required
+                              style={{ padding: '8px 12px', fontSize: '13px', borderRadius: '6px', border: '1px solid var(--color-outline-variant)' }}
+                            />
+                          </div>
+                          <div className="form-group" style={{ marginBottom: 0 }}>
+                            <label style={{ fontSize: '11px', fontWeight: 'bold' }}>Full Name *</label>
+                            <input 
+                              type="text" 
+                              value={editForm.name} 
+                              onChange={(e) => setEditForm(prev => ({ ...prev, name: e.target.value }))}
+                              required
+                              style={{ padding: '8px 12px', fontSize: '13px', borderRadius: '6px', border: '1px solid var(--color-outline-variant)' }}
+                            />
+                          </div>
                         </div>
                         <div className="form-group" style={{ marginBottom: 0 }}>
                           <label style={{ fontSize: '11px', fontWeight: 'bold' }}>Spouse Name</label>
@@ -894,46 +1150,22 @@ export const MemberPortal: React.FC<MemberPortalProps> = () => {
                     )}
                   </div>
 
-                  {/* Right Column: Notices & Quick Logout */}
+                  {/* Right Column: Important Announcements */}
                   <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                     <div className="dashboard-notices card card-primary" style={{ height: '100%', margin: 0 }}>
                       <h3 style={{ fontSize: '18px', color: 'var(--color-text-dark)', marginBottom: '12px' }}>Important Announcements</h3>
-                      <ul className="notice-list" style={{ gap: '10px' }}>
-                        <li style={{ fontSize: '13px', lineHeight: '1.4' }}>
-                          <strong>Samuh Lagan Registration:</strong> Deadline is December 1, 2026.
-                        </li>
-                        <li style={{ fontSize: '13px', lineHeight: '1.4' }}>
-                          <strong>Scholarship applications</strong> are now active. Submissions accepted under the education panel.
-                        </li>
-                        <li style={{ fontSize: '13px', lineHeight: '1.4' }}>
-                          <strong>Audited Accounts of FY 2025-26</strong> are available in the Reports directory.
-                        </li>
-                      </ul>
+                      {memberAnnouncements.length === 0 ? (
+                        <p style={{ fontSize: '13px', color: 'var(--color-text-light)', margin: 0 }}>No important announcements at this time.</p>
+                      ) : (
+                        <ul className="notice-list" style={{ gap: '10px' }}>
+                          {memberAnnouncements.map(ann => (
+                            <li key={ann.id} style={{ fontSize: '13px', lineHeight: '1.4' }}>
+                              <strong>{ann.title}:</strong> {ann.content}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     </div>
-
-                    <button 
-                      className="btn btn-outline"
-                      onClick={async () => {
-                        await logout();
-                        setPortalTab('home');
-                        const homeTabLink = document.getElementById('nav-link-home');
-                        if (homeTabLink) homeTabLink.click();
-                      }}
-                      style={{
-                        marginTop: '20px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '8px',
-                        borderColor: 'var(--color-primary)',
-                        color: 'var(--color-primary)',
-                        padding: '12px',
-                        fontWeight: 'bold',
-                        width: '100%'
-                      }}
-                    >
-                      <LogOut size={16} /> Logout from Portal
-                    </button>
                   </div>
                 </div>
 
@@ -1335,40 +1567,37 @@ export const MemberPortal: React.FC<MemberPortalProps> = () => {
                   <p>Download official administrative, audit, and budgetary documentation.</p>
                 </header>
 
-                <div className="reports-list">
-                  <div className="report-row-card">
-                    <div className="report-icon-block">PDF</div>
-                    <div className="report-info-block">
-                      <h3>Audited Balance Sheet FY 2025-2026</h3>
-                      <p>Approved statement of trust assets, bank accounts, and educational welfare disbursement registers.</p>
-                    </div>
-                    <button className="btn btn-secondary btn-download" onClick={() => alert('Downloading Report...')} id="download-report-btn-1">
-                      <Download size={16} /> Download
-                    </button>
+                {reportsLoading ? (
+                  <div style={{ textAlign: 'center', padding: '40px 0' }}>
+                    <p>Loading annual reports...</p>
                   </div>
-
-                  <div className="report-row-card" style={{ marginTop: '16px' }}>
-                    <div className="report-icon-block">PDF</div>
-                    <div className="report-info-block">
-                      <h3>Annual General Meeting (AGM) Minutes 2025</h3>
-                      <p>Resolutions approved by the general assembly including amendments to Stepwell Restoration fundings.</p>
-                    </div>
-                    <button className="btn btn-secondary btn-download" onClick={() => alert('Downloading AGM Minutes...')} id="download-report-btn-2">
-                      <Download size={16} /> Download
-                    </button>
+                ) : annualReports.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '40px 0' }}>
+                    <p>No published annual reports available at this time.</p>
                   </div>
-
-                  <div className="report-row-card" style={{ marginTop: '16px' }}>
-                    <div className="report-icon-block">PDF</div>
-                    <div className="report-info-block">
-                      <h3>Education Fund Merit Scholars List 2025</h3>
-                      <p>Complete directory of students funded under the SSPV merit scholarship program for academic degrees.</p>
-                    </div>
-                    <button className="btn btn-secondary btn-download" onClick={() => alert('Downloading Scholar List...')} id="download-report-btn-3">
-                      <Download size={16} /> Download
-                    </button>
+                ) : (
+                  <div className="reports-list">
+                    {annualReports.map((report, idx) => (
+                      <div key={report.id} className="report-row-card" style={idx > 0 ? { marginTop: '16px' } : {}}>
+                        <div className="report-icon-block">PDF</div>
+                        <div className="report-info-block">
+                          <h3>{report.title} ({report.financial_year})</h3>
+                          {report.description && <p>{report.description}</p>}
+                        </div>
+                        <a 
+                          href={report.file_url.startsWith('http') ? report.file_url : `http://127.0.0.1:8000${report.file_url}`} 
+                          target="_blank" 
+                          rel="noopener noreferrer" 
+                          className="btn btn-secondary btn-download" 
+                          style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+                          id={`download-report-btn-${report.id}`}
+                        >
+                          <Download size={16} /> Download
+                        </a>
+                      </div>
+                    ))}
                   </div>
-                </div>
+                )}
               </div>
             )}
           </main>

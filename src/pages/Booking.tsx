@@ -1,47 +1,160 @@
-import React, { useState } from 'react';
-import { CheckCircle, Info, Landmark, MapPin, Send } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { CheckCircle, Info, Landmark, MapPin, Send, Loader2, AlertCircle, Calendar as CalendarIcon, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { bookingService } from '../services/bookingService';
+import type { BookingInquiryResponse } from '../services/bookingService';
 
 export const Booking: React.FC = () => {
+  const { isAuthenticated, user } = useAuth();
+  const [knownBookedDates, setKnownBookedDates] = useState<string[]>([]);
+  const [checkingDay, setCheckingDay] = useState<number | null>(null);
+  const [availabilityStatus, setAvailabilityStatus] = useState<{ date: string; available: boolean; message: string } | null>(null);
+
+  const [currentMonth, setCurrentMonth] = useState<Date>(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
+
+  // Form state
   const [formData, setFormData] = useState({
-    name: '',
+    name: user?.email?.split('@')[0] || '',
     phone: '',
     facility: 'The Grand Hall',
     startDate: '',
     endDate: '',
     details: '',
+    eventName: '',
+    memberCount: 100,
   });
 
   const [submitted, setSubmitted] = useState(false);
-  const [selectedDateRange, setSelectedDateRange] = useState<{ start: number | null, end: number | null }>({ start: null, end: null });
+  const [selectedDateRange, setSelectedDateRange] = useState<{ start: string | null, end: string | null }>({ start: null, end: null });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
-  // Mock Booked Dates for July 2026 (1-indexed)
-  const bookedDates = [4, 5, 11, 12, 18, 19, 25, 26]; // Weekends are booked
+  // History state
+  const [history, setHistory] = useState<BookingInquiryResponse[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
 
-  // Calendar parameters for July 2026
-  const monthName = 'July 2026';
-  const totalDays = 31;
-  const startDayOffset = 3; // July 2026 starts on Wednesday (so 3 offset days: Sun, Mon, Tue empty)
+  // Auto-fill name from email when authenticated user changes
+  useEffect(() => {
+    if (user?.email && !formData.name) {
+      setFormData(prev => ({ ...prev, name: user.email?.split('@')[0] || '' }));
+    }
+  }, [user]);
 
-  const handleDateClick = (day: number) => {
-    if (bookedDates.includes(day)) return;
+  const fetchHistory = async () => {
+    if (!isAuthenticated) {
+      setHistory([]);
+      return;
+    }
+    setIsLoadingHistory(true);
+    setHistoryError(null);
+    try {
+      const data = await bookingService.getHistory();
+      setHistory(data);
+      // Automatically map approved dates for this facility to knownBookedDates
+      const bookedDates: string[] = [];
+      data.forEach(item => {
+        if (item.status === 'approved' && item.booking_date && item.hall === formData.facility) {
+          if (!bookedDates.includes(item.booking_date)) {
+            bookedDates.push(item.booking_date);
+          }
+        }
+      });
+      setKnownBookedDates(prev => Array.from(new Set([...prev, ...bookedDates])));
+    } catch (err: any) {
+      setHistoryError(err.response?.data?.detail || 'Failed to load booking history.');
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchHistory();
+  }, [isAuthenticated]);
+
+  const year = currentMonth.getFullYear();
+  const monthName = currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  const totalDays = new Date(year, currentMonth.getMonth() + 1, 0).getDate();
+  const startDayOffset = new Date(year, currentMonth.getMonth(), 1).getDay();
+
+  const getFormattedDate = (day: number) => {
+    const y = currentMonth.getFullYear();
+    const m = String(currentMonth.getMonth() + 1).padStart(2, '0');
+    const d = String(day).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
+
+  const handlePrevMonth = () => {
+    setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
+  };
+
+  const handleNextMonth = () => {
+    setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
+  };
+
+  const handleDateClick = async (day: number) => {
+    const formattedDate = getFormattedDate(day);
+    if (knownBookedDates.includes(formattedDate)) return;
+
+    if (!isAuthenticated) {
+      alert('Please log in to your Member Portal account to check real-time availability and select dates.');
+      return;
+    }
+
+    // Check real-time availability with backend
+    setCheckingDay(day);
+    setAvailabilityStatus(null);
+    try {
+      const isAvail = await bookingService.checkAvailability(formattedDate, formData.facility);
+      if (!isAvail) {
+        setKnownBookedDates(prev => Array.from(new Set([...prev, formattedDate])));
+        setAvailabilityStatus({
+          date: formattedDate,
+          available: false,
+          message: `❌ ${formData.facility} is already reserved for ${formattedDate}.`
+        });
+        setCheckingDay(null);
+        return;
+      } else {
+        setAvailabilityStatus({
+          date: formattedDate,
+          available: true,
+          message: `✅ ${formData.facility} is available on ${formattedDate}!`
+        });
+      }
+    } catch (err: any) {
+      setAvailabilityStatus({
+        date: formattedDate,
+        available: false,
+        message: `Error checking availability: ${err.response?.data?.detail || 'Server error'}`
+      });
+      setCheckingDay(null);
+      return;
+    } finally {
+      setCheckingDay(null);
+    }
 
     if (!selectedDateRange.start || (selectedDateRange.start && selectedDateRange.end)) {
-      setSelectedDateRange({ start: day, end: null });
-      setFormData(prev => ({ ...prev, startDate: `2026-07-${day < 10 ? '0' + day : day}` }));
-    } else if (day >= selectedDateRange.start) {
-      setSelectedDateRange(prev => ({ ...prev, end: day }));
-      setFormData(prev => ({ ...prev, endDate: `2026-07-${day < 10 ? '0' + day : day}` }));
+      setSelectedDateRange({ start: formattedDate, end: null });
+      setFormData(prev => ({ ...prev, startDate: formattedDate }));
+    } else if (formattedDate >= selectedDateRange.start) {
+      setSelectedDateRange(prev => ({ ...prev, end: formattedDate }));
+      setFormData(prev => ({ ...prev, endDate: formattedDate }));
     } else {
-      setSelectedDateRange({ start: day, end: null });
-      setFormData(prev => ({ ...prev, startDate: `2026-07-${day < 10 ? '0' + day : day}`, endDate: '' }));
+      setSelectedDateRange({ start: formattedDate, end: null });
+      setFormData(prev => ({ ...prev, startDate: formattedDate, endDate: '' }));
     }
   };
 
   const isSelected = (day: number) => {
-    if (selectedDateRange.start === day) return true;
-    if (selectedDateRange.end === day) return true;
+    const formattedDate = getFormattedDate(day);
+    if (selectedDateRange.start === formattedDate) return true;
+    if (selectedDateRange.end === formattedDate) return true;
     if (selectedDateRange.start && selectedDateRange.end) {
-      return day > selectedDateRange.start && day < selectedDateRange.end;
+      return formattedDate > selectedDateRange.start && formattedDate < selectedDateRange.end;
     }
     return false;
   };
@@ -51,26 +164,111 @@ export const Booking: React.FC = () => {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleFacilityChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newFacility = e.target.value;
+    setFormData(prev => ({ ...prev, facility: newFacility }));
+    if (history.length > 0) {
+      const bookedDates: string[] = [];
+      history.forEach(item => {
+        if (item.status === 'approved' && item.booking_date && item.hall === newFacility) {
+          if (!bookedDates.includes(item.booking_date)) {
+            bookedDates.push(item.booking_date);
+          }
+        }
+      });
+      setKnownBookedDates(bookedDates);
+    } else {
+      setKnownBookedDates([]);
+    }
+    if (formData.startDate && isAuthenticated) {
+      try {
+        const isAvail = await bookingService.checkAvailability(formData.startDate, newFacility);
+        setAvailabilityStatus({
+          date: formData.startDate,
+          available: isAvail,
+          message: isAvail 
+            ? `✅ ${newFacility} is available on ${formData.startDate}!` 
+            : `❌ ${newFacility} is currently reserved for ${formData.startDate}.`
+        });
+      } catch {
+        // Ignore silent error on facility change
+      }
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name || !formData.phone || !formData.startDate) {
-      alert('Please fill out Name, Phone, and select a Start Date.');
+    setSubmitError(null);
+
+    if (!isAuthenticated) {
+      setSubmitError('You must be logged in to your Member Portal account to submit a booking inquiry.');
       return;
     }
-    setSubmitted(true);
+
+    if (!formData.name.trim() || !formData.phone.trim() || !formData.startDate || !formData.eventName.trim()) {
+      setSubmitError('Please fill out all required fields (Name, Phone, Facility, Event Name, Attendees, and Start Date).');
+      return;
+    }
+
+    // Clean phone number (backend expects strictly ^\d{10}$)
+    const cleanPhone = formData.phone.replace(/\D/g, '');
+    if (cleanPhone.length !== 10) {
+      setSubmitError('Contact number must be exactly 10 digits (e.g. 9876543210) without spaces or country code.');
+      return;
+    }
+
+    // Validate date is in the future
+    const today = new Date().toISOString().split('T')[0];
+    if (formData.startDate <= today) {
+      setSubmitError('Booking start date must be in the future.');
+      return;
+    }
+
+    const purposeText = formData.details.trim() 
+      ? formData.details.trim() 
+      : `${formData.eventName} at ${formData.facility} (${formData.startDate}${formData.endDate ? ' to ' + formData.endDate : ''})`;
+
+    if (purposeText.length < 5) {
+      setSubmitError('Please provide a slightly more descriptive purpose or requirements (at least 5 characters).');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await bookingService.submitInquiry({
+        contact_name: formData.name.trim(),
+        contact_phone: cleanPhone,
+        booking_date: formData.startDate,
+        purpose: purposeText,
+        hall: formData.facility,
+        event_name: formData.eventName.trim(),
+        member_count: Number(formData.memberCount) || 100,
+      });
+      setSubmitted(true);
+      // Refresh booking history automatically after successful submission
+      await fetchHistory();
+    } catch (err: any) {
+      setSubmitError(err.response?.data?.detail || 'Failed to submit booking inquiry. Please check your inputs and try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleResetForm = () => {
     setFormData({
-      name: '',
+      name: user?.email?.split('@')[0] || '',
       phone: '',
       facility: 'The Grand Hall',
       startDate: '',
       endDate: '',
       details: '',
+      eventName: '',
+      memberCount: 100,
     });
     setSelectedDateRange({ start: null, end: null });
     setSubmitted(false);
+    setSubmitError(null);
+    setAvailabilityStatus(null);
   };
 
   const renderCalendarDays = () => {
@@ -81,8 +279,10 @@ export const Booking: React.FC = () => {
     }
     // Render active day cells
     for (let day = 1; day <= totalDays; day++) {
-      const isBooked = bookedDates.includes(day);
+      const formattedDate = getFormattedDate(day);
+      const isBooked = knownBookedDates.includes(formattedDate);
       const isDaySelected = isSelected(day);
+      const isChecking = checkingDay === day;
       
       let dayClass = 'calendar-cell';
       if (isBooked) dayClass += ' booked';
@@ -95,10 +295,10 @@ export const Booking: React.FC = () => {
           type="button"
           className={dayClass}
           onClick={() => handleDateClick(day)}
-          disabled={isBooked}
-          aria-label={`${isBooked ? 'Booked' : 'Available'} July ${day}, 2026`}
+          disabled={isBooked || isChecking}
+          aria-label={`${isBooked ? 'Booked' : 'Available'} ${monthName.split(' ')[0]} ${day}, ${year}`}
         >
-          {day}
+          {isChecking ? <Loader2 size={14} className="spin-animation" /> : day}
         </button>
       );
     }
@@ -153,8 +353,30 @@ export const Booking: React.FC = () => {
         {/* Left Side: Interactive Calendar */}
         <div className="booking-calendar-col">
           <div className="calendar-card" id="calendar-card-interactive">
-            <div className="calendar-header-wrapper">
-              <h3>{monthName} Availability</h3>
+            <div className="calendar-header-wrapper" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <h3 style={{ margin: 0 }}>{monthName} Availability</h3>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <button
+                    type="button"
+                    onClick={handlePrevMonth}
+                    className="btn btn-secondary"
+                    style={{ padding: '4px 10px', minHeight: '28px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                    aria-label="Previous Month"
+                  >
+                    <ChevronLeft size={14} /> Prev
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleNextMonth}
+                    className="btn btn-secondary"
+                    style={{ padding: '4px 10px', minHeight: '28px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                    aria-label="Next Month"
+                  >
+                    Next <ChevronRight size={14} />
+                  </button>
+                </div>
+              </div>
               <div className="calendar-legends">
                 <div className="legend-item">
                   <span className="legend-dot available"></span>
@@ -179,8 +401,14 @@ export const Booking: React.FC = () => {
             </div>
             <div className="calendar-tip">
               <Info size={14} />
-              <span>Click on any available date to select your starting date and range.</span>
+              <span>Click on any available date to select your starting date and check real-time reservation status.</span>
             </div>
+
+            {availabilityStatus && (
+              <div className={`availability-alert ${availabilityStatus.available ? 'avail-success' : 'avail-error'}`}>
+                {availabilityStatus.message}
+              </div>
+            )}
           </div>
         </div>
 
@@ -200,6 +428,15 @@ export const Booking: React.FC = () => {
               <form onSubmit={handleSubmit} className="inquiry-form-fields" id="booking-inquiry-form">
                 <h3 className="form-title">Booking Inquiry Form</h3>
                 
+                {submitError && (
+                  <div className="availability-alert avail-error" style={{ marginBottom: '16px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <AlertCircle size={16} />
+                      <span>{submitError}</span>
+                    </div>
+                  </div>
+                )}
+
                 <div className="grid grid-2" style={{ gap: '16px', marginBottom: '14px' }}>
                   <div className="form-group" style={{ marginBottom: 0 }}>
                     <label htmlFor="name-input">Full Name *</label>
@@ -222,24 +459,53 @@ export const Booking: React.FC = () => {
                       name="phone"
                       value={formData.phone}
                       onChange={handleInputChange}
-                      placeholder="Phone number"
+                      placeholder="Exactly 10 digits"
                       required
                     />
                   </div>
                 </div>
 
                 <div className="form-group" style={{ marginBottom: '14px' }}>
-                  <label htmlFor="facility-select">Select Facility</label>
+                  <label htmlFor="facility-select">Select Facility *</label>
                   <select
                     id="facility-select"
                     name="facility"
                     value={formData.facility}
-                    onChange={handleInputChange}
+                    onChange={handleFacilityChange}
                   >
                     <option>The Grand Hall</option>
                     <option>Hostel Guest Accommodation</option>
                     <option>Both Hall & Hostel</option>
                   </select>
+                </div>
+
+                <div className="grid grid-2" style={{ gap: '16px', marginBottom: '14px' }}>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label htmlFor="event-name-input">Event Name *</label>
+                    <input
+                      id="event-name-input"
+                      type="text"
+                      name="eventName"
+                      value={formData.eventName}
+                      onChange={handleInputChange}
+                      placeholder="e.g. Wedding Reception"
+                      required
+                    />
+                  </div>
+
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label htmlFor="member-count-input">Expected Attendees *</label>
+                    <input
+                      id="member-count-input"
+                      type="number"
+                      name="memberCount"
+                      min="1"
+                      max="1000"
+                      value={formData.memberCount}
+                      onChange={handleInputChange}
+                      required
+                    />
+                  </div>
                 </div>
 
                 <div className="grid grid-2" style={{ gap: '16px', marginBottom: '14px' }}>
@@ -278,8 +544,16 @@ export const Booking: React.FC = () => {
                   />
                 </div>
 
-                <button type="submit" className="btn btn-primary form-submit-btn" id="booking-submit-btn" style={{ padding: '12px' }}>
-                  Submit Inquiry <Send size={14} />
+                <button type="submit" className="btn btn-primary form-submit-btn" id="booking-submit-btn" disabled={isSubmitting} style={{ padding: '12px' }}>
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 size={16} className="spin-animation" /> Submitting Inquiry...
+                    </>
+                  ) : (
+                    <>
+                      Submit Inquiry <Send size={14} />
+                    </>
+                  )}
                 </button>
               </form>
             )}
@@ -287,7 +561,179 @@ export const Booking: React.FC = () => {
         </div>
       </div>
 
+      {/* Booking Inquiry History Section */}
+      <div className="inquiry-header-divider" style={{ marginTop: '50px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h2>My Booking Inquiry History</h2>
+          {isAuthenticated && (
+            <button 
+              type="button" 
+              className="btn btn-outline" 
+              onClick={fetchHistory} 
+              disabled={isLoadingHistory}
+              style={{ padding: '6px 14px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}
+            >
+              <RefreshCw size={14} className={isLoadingHistory ? 'spin-animation' : ''} /> Refresh History
+            </button>
+          )}
+        </div>
+        <div className="divider-line"></div>
+      </div>
+
+      <div className="history-section-wrapper">
+        {!isAuthenticated ? (
+          <div className="booking-empty-state">
+            <Info size={32} className="empty-icon" />
+            <p>Please log in to your Member Portal account to view your reservation inquiry history.</p>
+          </div>
+        ) : isLoadingHistory ? (
+          <div className="booking-loading-state">
+            <Loader2 size={36} className="spin-animation" style={{ color: 'var(--color-primary)' }} />
+            <p>Loading your booking inquiry history...</p>
+          </div>
+        ) : historyError ? (
+          <div className="booking-error-state">
+            <AlertCircle size={32} className="error-icon" />
+            <p>{historyError}</p>
+            <button className="btn btn-outline" onClick={fetchHistory} style={{ marginTop: '12px' }}>Try Again</button>
+          </div>
+        ) : history.length === 0 ? (
+          <div className="booking-empty-state">
+            <CalendarIcon size={36} className="empty-icon" />
+            <h3>No Reservation Inquiries Found</h3>
+            <p>You have not submitted any hall or hostel booking inquiries yet. Select an available date on the calendar above to send your first request.</p>
+          </div>
+        ) : (
+          <div className="booking-table-container">
+            <table className="booking-history-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Submitted On</th>
+                  <th>Event & Purpose</th>
+                  <th>Facility</th>
+                  <th>Target Date</th>
+                  <th>Guests</th>
+                  <th>Status</th>
+                  <th>Admin Remark</th>
+                </tr>
+              </thead>
+              <tbody>
+                {history.map((item) => (
+                  <tr key={item.id}>
+                    <td><strong>#{item.id}</strong></td>
+                    <td>{new Date(item.created_at).toLocaleDateString()}</td>
+                    <td>
+                      <div style={{ fontWeight: 600, color: 'var(--color-text-dark)' }}>{item.event_name}</div>
+                      <div style={{ fontSize: '12px', color: 'var(--color-text-muted)', maxWidth: '220px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.purpose}</div>
+                    </td>
+                    <td><span className="facility-badge">{item.hall}</span></td>
+                    <td><strong>{item.booking_date}</strong></td>
+                    <td>{item.member_count}</td>
+                    <td>
+                      <span className={`status-badge status-${item.status}`}>
+                        {item.status === 'approved' && '✅ Approved'}
+                        {item.status === 'pending' && '⏳ Pending Review'}
+                        {item.status === 'rejected' && '❌ Rejected'}
+                        {!['approved', 'pending', 'rejected'].includes(item.status) && item.status}
+                      </span>
+                    </td>
+                    <td>{item.admin_remark || <span style={{ color: 'var(--color-text-muted)', fontStyle: 'italic' }}>—</span>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
       <style>{`
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+        .spin-animation { animation: spin 1s linear infinite; }
+
+        .availability-alert {
+          margin-top: 16px;
+          padding: 10px 14px;
+          border-radius: var(--border-radius-md);
+          font-family: var(--font-body);
+          font-size: 13px;
+          font-weight: 600;
+        }
+        .avail-success { background-color: var(--bg-sand-lowest); color: var(--color-secondary); border: 1px solid var(--color-secondary); }
+        .avail-error { background-color: var(--bg-sand-dim); color: var(--color-primary); border: 1px solid var(--color-primary); }
+
+        .booking-empty-state, .booking-loading-state, .booking-error-state {
+          background-color: var(--bg-sand-lowest);
+          border: 1px solid var(--color-outline-variant);
+          border-radius: var(--border-radius-lg);
+          padding: 40px 20px;
+          text-align: center;
+          box-shadow: var(--shadow-atmospheric);
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 12px;
+        }
+        .booking-empty-state h3 { margin: 0; font-size: 18px; color: var(--color-text-dark); }
+        .booking-empty-state p, .booking-loading-state p, .booking-error-state p { margin: 0; font-family: var(--font-body); font-size: 14px; color: var(--color-text-muted); max-width: 450px; }
+        .empty-icon { color: var(--color-text-muted); opacity: 0.5; }
+        .error-icon { color: var(--color-primary); }
+
+        .booking-table-container {
+          background-color: var(--bg-sand-lowest);
+          border: 1px solid var(--color-outline-variant);
+          border-radius: var(--border-radius-lg);
+          overflow-x: auto;
+          box-shadow: var(--shadow-atmospheric);
+        }
+        .booking-history-table {
+          width: 100%;
+          border-collapse: collapse;
+          font-family: var(--font-body);
+          font-size: 14px;
+          text-align: left;
+        }
+        .booking-history-table th {
+          background-color: var(--bg-sand-container);
+          color: var(--color-text-dark);
+          font-weight: 700;
+          padding: 14px 18px;
+          border-bottom: 2px solid var(--color-outline-variant);
+          white-space: nowrap;
+        }
+        .booking-history-table td {
+          padding: 14px 18px;
+          border-bottom: 1px solid var(--color-outline-variant);
+          color: var(--color-text-dark);
+          vertical-align: middle;
+        }
+        .booking-history-table tr:last-child td {
+          border-bottom: none;
+        }
+        .booking-history-table tr:hover td {
+          background-color: var(--bg-sand-low);
+        }
+        .facility-badge {
+          background-color: var(--bg-sand-low);
+          border: 1px solid var(--color-outline-variant);
+          padding: 4px 10px;
+          border-radius: var(--border-radius-full);
+          font-size: 12px;
+          font-weight: 600;
+          white-space: nowrap;
+        }
+        .status-badge {
+          display: inline-block;
+          padding: 4px 10px;
+          border-radius: var(--border-radius-full);
+          font-size: 12px;
+          font-weight: 700;
+          white-space: nowrap;
+        }
+        .status-approved { background-color: var(--bg-sand-lowest); color: var(--color-secondary); border: 1px solid var(--color-secondary); }
+        .status-pending { background-color: var(--bg-sand-container); color: var(--color-primary); border: 1px solid var(--color-primary-container); }
+        .status-rejected { background-color: #ffebee; color: #c62828; border: 1px solid #ef9a9a; }
+
         .badge {
           display: inline-block;
           font-family: var(--font-body);
